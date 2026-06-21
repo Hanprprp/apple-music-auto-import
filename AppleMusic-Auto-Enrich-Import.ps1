@@ -30,6 +30,156 @@ function Ask-Confirm {
     return [System.Windows.Forms.MessageBox]::Show($Text, $Title, "YesNoCancel", "Question")
 }
 
+function Ask-TrackInfo {
+    param(
+        [string]$FileName,
+        [string]$DefaultSongTitle = "",
+        [string]$DefaultArtist = "",
+        [string]$DefaultAlbum = "",
+        [string]$DefaultYear = "",
+        [string]$DefaultExtra = "",
+        [bool]$DefaultLive = $false,
+        [bool]$DefaultCover = $false,
+        [string]$DefaultCoverArtist = "",
+        [string]$Message = ""
+    )
+
+    Add-Type -AssemblyName System.Windows.Forms | Out-Null
+    Add-Type -AssemblyName System.Drawing | Out-Null
+    $D = { param([string]$B64) [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($B64)) }
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = (& $D "5aGr5YaZ5q2M5puy5L+h5oGv")
+    $form.StartPosition = "CenterScreen"
+    $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $false
+    $form.ClientSize = New-Object System.Drawing.Size(560, 470)
+
+    $font = New-Object System.Drawing.Font("Microsoft YaHei UI", 9)
+    $form.Font = $font
+
+    $note = New-Object System.Windows.Forms.Label
+    $note.AutoSize = $false
+    $note.Location = New-Object System.Drawing.Point(18, 14)
+    $note.Size = New-Object System.Drawing.Size(520, 38)
+    $note.Text = if ([string]::IsNullOrWhiteSpace($Message)) { (& $D "5LiA5qyh5aGr5a6M77yb5LiN56Gu5a6a55qE5Y+v5Lul55WZ56m677yM6K+G5Yir6ZSZ5LqG54K54oCc5ZCm4oCd5Lya5Zue5Yiw6L+Z6YeM5L+u5pS544CC") } else { $Message }
+    $form.Controls.Add($note)
+
+    $fileLabel = New-Object System.Windows.Forms.Label
+    $fileLabel.AutoSize = $false
+    $fileLabel.Location = New-Object System.Drawing.Point(18, 54)
+    $fileLabel.Size = New-Object System.Drawing.Size(520, 22)
+    $fileLabel.Text = (& $D "5paH5Lu277ya") + $FileName
+    $form.Controls.Add($fileLabel)
+
+    function Add-Label {
+        param([string]$Text, [int]$Y)
+        $label = New-Object System.Windows.Forms.Label
+        $label.AutoSize = $false
+        $label.Location = New-Object System.Drawing.Point(20, $Y)
+        $label.Size = New-Object System.Drawing.Size(140, 24)
+        $label.Text = $Text
+        $form.Controls.Add($label)
+        return $label
+    }
+
+    function Add-TextBox {
+        param([string]$Text, [int]$Y, [int]$Height = 25, [bool]$Multiline = $false)
+        $box = New-Object System.Windows.Forms.TextBox
+        $box.Location = New-Object System.Drawing.Point(168, $Y)
+        $box.Size = New-Object System.Drawing.Size(370, $Height)
+        $box.Text = $Text
+        $box.ImeMode = [System.Windows.Forms.ImeMode]::On
+        $box.Multiline = $Multiline
+        if ($Multiline) {
+            $box.ScrollBars = "Vertical"
+        }
+        $form.Controls.Add($box)
+        return $box
+    }
+
+    Add-Label (& $D "5q2M5ZCN") 90 | Out-Null
+    $titleBox = Add-TextBox $DefaultSongTitle 88
+    Add-Label (& $D "5Y6f5ZSxIC8g5Y6f5q2M5omL") 128 | Out-Null
+    $artistBox = Add-TextBox $DefaultArtist 126
+    Add-Label (& $D "5LiT6L6R5ZCN77yI5Y+v6YCJ77yJ") 166 | Out-Null
+    $albumBox = Add-TextBox $DefaultAlbum 164
+    Add-Label (& $D "5bm05Lu977yI5Y+v6YCJ77yJ") 204 | Out-Null
+    $yearBox = Add-TextBox $DefaultYear 202
+    Add-Label (& $D "5YW25LuW57q/57Si77yI6K+t6KiA44CB55S15b2xL+eUteinhuWJp+OAgeW5s+WPsOWQjeetie+8iQ==") 244 | Out-Null
+    $extraBox = Add-TextBox $DefaultExtra 242 60 $true
+
+    $liveBox = New-Object System.Windows.Forms.CheckBox
+    $liveBox.Location = New-Object System.Drawing.Point(168, 318)
+    $liveBox.Size = New-Object System.Drawing.Size(180, 24)
+    $liveBox.Text = (& $D "6L+Z5pivIExpdmUgLyDnjrDlnLrniYg=")
+    $liveBox.Checked = $DefaultLive
+    $form.Controls.Add($liveBox)
+
+    $coverBox = New-Object System.Windows.Forms.CheckBox
+    $coverBox.Location = New-Object System.Drawing.Point(168, 348)
+    $coverBox.Size = New-Object System.Drawing.Size(180, 24)
+    $coverBox.Text = (& $D "6L+Z5piv57+75ZSx54mI")
+    $coverBox.Checked = $DefaultCover
+    $form.Controls.Add($coverBox)
+
+    Add-Label (& $D "57+75ZSx6ICFIC8g5b2T5YmN5ryU5ZSx6ICF") 386 | Out-Null
+    $coverArtistBox = Add-TextBox $DefaultCoverArtist 384
+    $coverArtistBox.Enabled = $coverBox.Checked
+    $coverBox.Add_CheckedChanged({
+        $coverArtistBox.Enabled = $coverBox.Checked
+        if ($coverBox.Checked -and [string]::IsNullOrWhiteSpace($coverArtistBox.Text)) {
+            $coverArtistBox.Text = $artistBox.Text
+        }
+    })
+
+    $okButton = New-Object System.Windows.Forms.Button
+    $okButton.Location = New-Object System.Drawing.Point(338, 430)
+    $okButton.Size = New-Object System.Drawing.Size(90, 28)
+    $okButton.Text = (& $D "56Gu5a6a")
+    $form.Controls.Add($okButton)
+
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Location = New-Object System.Drawing.Point(448, 430)
+    $cancelButton.Size = New-Object System.Drawing.Size(90, 28)
+    $cancelButton.Text = (& $D "5Y+W5raI")
+    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $form.Controls.Add($cancelButton)
+    $form.CancelButton = $cancelButton
+
+    $result = $null
+    $okButton.Add_Click({
+        if ([string]::IsNullOrWhiteSpace($titleBox.Text)) {
+            [System.Windows.Forms.MessageBox]::Show((& $D "5q2M5ZCN5LiN6IO95Li656m644CC"), $form.Text, "OK", "Warning") | Out-Null
+            $titleBox.Focus()
+            return
+        }
+        $script:AskTrackInfoResult = [PSCustomObject]@{
+            Cancelled = $false
+            SongTitle = $titleBox.Text.Trim()
+            ArtistName = $artistBox.Text.Trim()
+            AlbumName = $albumBox.Text.Trim()
+            YearText = $yearBox.Text.Trim()
+            ExtraText = $extraBox.Text.Trim()
+            IsLive = [bool]$liveBox.Checked
+            IsCover = [bool]$coverBox.Checked
+            CoverArtist = $coverArtistBox.Text.Trim()
+        }
+        $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $form.Close()
+    })
+
+    $titleBox.Select()
+    $dialogResult = $form.ShowDialog()
+    if ($dialogResult -ne [System.Windows.Forms.DialogResult]::OK -or -not $script:AskTrackInfoResult) {
+        return [PSCustomObject]@{ Cancelled = $true }
+    }
+    $result = $script:AskTrackInfoResult
+    $script:AskTrackInfoResult = $null
+    return $result
+}
+
 function Pick-Files {
     Add-Type -AssemblyName System.Windows.Forms | Out-Null
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
@@ -1140,33 +1290,26 @@ try {
         }
         $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file)
         $Z = { param([string]$B64) [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($B64)) }
-        $songTitle = Ask-Text (& $Z "6L+Z6aaW5q2M5Y+r5LuA5LmI77yf5aaC5p6c5LiN55+l6YGT77yM5Y+v5Lul5YWI55So5paH5Lu25ZCN44CC") $baseName
-        if ([string]::IsNullOrWhiteSpace($songTitle)) {
-            $songTitle = $baseName
-        }
-        $artistName = Ask-Text (& $Z "5q2M5omL5piv6LCB77yf5Y+v5Lul5YaZ5LiA5Liq5oiW5aSa5Liq5q2M5omL77yb5LiN55+l6YGT5bCx55WZ56m644CC") ""
-        $liveAnswer = Ask-Confirm (& $Z "6L+Z5pivIExpdmUgLyDnjrDlnLrniYjlkJfvvJ8KCueCueKAnOaYr+KAne+8muagh+mimOWSjOS4k+i+keS8muiHquWKqOWKoCAoTGl2ZSnvvIzkvYblsIHpnaLjgIHlubTku73nrYnku43kvb/nlKjljp/mm7LotYTmlpnjgIIK54K54oCc5ZCm4oCd77ya5oyJ5pmu6YCa54mI5pys5a+85YWl44CC") (& $Z "TGl2ZSAvIOeOsOWcuueJiA==")
-        if ($liveAnswer -eq [System.Windows.Forms.DialogResult]::Cancel) {
+        $trackInfo = Ask-TrackInfo -FileName ([System.IO.Path]::GetFileName($file)) -DefaultSongTitle $baseName
+        if ($trackInfo.Cancelled) {
             continue
         }
-        $liveArg = "--force-studio"
-        if ($liveAnswer -eq [System.Windows.Forms.DialogResult]::Yes) {
-            $liveArg = "--force-live"
-        }
-        $coverAnswer = Ask-Confirm (& $Z "6L+Z5piv57+75ZSx54mI5ZCX77yfCgrngrnigJzmmK/igJ3vvJrotYTmlpnkvp3nhLbmjInljp/mm7LmkJzntKLvvIzkvYblr7zlhaXml7bmiormrYzmiYvmlLnmiJDnv7vllLHogIXjgIIK54K54oCc5ZCm4oCd77ya5oyJ5Y6f5q2M5omL5a+85YWl44CC") (& $Z "57+75ZSx54mI")
-        if ($coverAnswer -eq [System.Windows.Forms.DialogResult]::Cancel) {
-            continue
-        }
+        $songTitle = $trackInfo.SongTitle
+        if ([string]::IsNullOrWhiteSpace($songTitle)) { $songTitle = $baseName }
+        $artistName = $trackInfo.ArtistName
+        $albumName = $trackInfo.AlbumName
+        $yearText = $trackInfo.YearText
+        $extraText = $trackInfo.ExtraText
+        $isLive = [bool]$trackInfo.IsLive
+        $isCover = [bool]$trackInfo.IsCover
+        $liveArg = if ($isLive) { "--force-live" } else { "--force-studio" }
         $coverArtist = ""
-        if ($coverAnswer -eq [System.Windows.Forms.DialogResult]::Yes) {
-            $coverArtist = Ask-Text (& $Z "57+75ZSx6ICF5piv6LCB77yf5L6L5aaC77ya5p6X5L+K5p2w44CB5p+Q5Liq546w5Zy65q2M5omL44CBWW91VHViZSDpopHpgZPlkI3jgII=") ""
+        if ($isCover) {
+            $coverArtist = $trackInfo.CoverArtist
             if ([string]::IsNullOrWhiteSpace($coverArtist)) {
                 $coverArtist = $artistName
             }
         }
-        $albumName = ""
-        $yearText = ""
-        $extraText = ""
         $hint = ""
         $confirmed = $false
         $skipFile = $false
@@ -1260,14 +1403,37 @@ try {
                 break
             }
 
-            if ([string]::IsNullOrWhiteSpace($albumName)) {
-                $albumName = Ask-Text (& $Z "6LWE5paZ6L+Y5LiN5aSf44CC5L2g55+l6YGT5LiT6L6R5ZCN5ZCX77yf5LiN55+l6YGT5Y+v5Lul55WZ56m644CC") ""
+            $trackInfo = Ask-TrackInfo `
+                -FileName ([System.IO.Path]::GetFileName($file)) `
+                -DefaultSongTitle $songTitle `
+                -DefaultArtist $artistName `
+                -DefaultAlbum $albumName `
+                -DefaultYear $yearText `
+                -DefaultExtra $extraText `
+                -DefaultLive $isLive `
+                -DefaultCover $isCover `
+                -DefaultCoverArtist $coverArtist `
+                -Message (& $Z "6KGl5YWF5oiW5L+u5pS55L+h5oGv5ZCO6YeN5paw6K+G5Yir44CC")
+            if ($trackInfo.Cancelled) {
+                Write-Log "User cancelled file after probe: $file"
+                $skipFile = $true
+                break
             }
-            elseif ([string]::IsNullOrWhiteSpace($yearText)) {
-                $yearText = Ask-Text (& $Z "5L2g55+l6YGT5Y+R6KGM5bm05Lu95ZCX77yf5L6L5aaCIDIwMDPvvJvkuI3nn6XpgZPlj6/ku6XnlZnnqbrjgII=") ""
-            }
-            else {
-                $extraText = Ask-Text (& $Z "5YaN57uZ5LiA54K557q/57Si77ya5Yir5ZCN44CB6K+t6KiA44CB55S15b2xL+eUteinhuWJpy/njrDlnLrniYjjgIFTaW5nbGXjgIFFUCDnrYnjgII=") $extraText
+            $songTitle = $trackInfo.SongTitle
+            if ([string]::IsNullOrWhiteSpace($songTitle)) { $songTitle = $baseName }
+            $artistName = $trackInfo.ArtistName
+            $albumName = $trackInfo.AlbumName
+            $yearText = $trackInfo.YearText
+            $extraText = $trackInfo.ExtraText
+            $isLive = [bool]$trackInfo.IsLive
+            $isCover = [bool]$trackInfo.IsCover
+            $liveArg = if ($isLive) { "--force-live" } else { "--force-studio" }
+            $coverArtist = ""
+            if ($isCover) {
+                $coverArtist = $trackInfo.CoverArtist
+                if ([string]::IsNullOrWhiteSpace($coverArtist)) {
+                    $coverArtist = $artistName
+                }
             }
         }
 

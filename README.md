@@ -2,12 +2,15 @@
 
 Windows tool for tagging local audio files and importing them into Apple Music.
 
-It asks for the song title, original artist, whether the track is a live version, and whether it is a cover. It then searches metadata, writes tags and cover art into an M4A file, and drops the processed file into Apple Music's auto-import folder.
+Have a favorite live performance, rare cover, YouTube rip, or local audio file that Apple Music does not have? This tool turns it into a clean Apple Music library item with title, artist, album, year, cover art, credits when available, and lyrics when available.
+
+It asks for the song details in one Chinese form, searches metadata, writes tags and cover art into an M4A file, and drops the processed file into Apple Music's auto-import folder.
 
 ## Features
 
 - Select local audio files: `.m4a`, `.mp4`, `.aac`, `.mp3`, `.flac`, `.wav`
-- Chinese prompt flow for title, artist, live version, and cover version
+- One-window Chinese form for title, artist, album, year, extra hints, live version, and cover version
+- Chinese input mode is enabled in the form fields so Pinyin input stays ready
 - Better Chinese metadata matching through NetEase and Kuwo, with iTunes still used for high-confidence matches and artwork fallback
 - Handles bad download filenames such as `videoplayback.m4a`
 - Live mode: adds `(Live)` to title and uses a live single album name
@@ -52,9 +55,11 @@ The tool will offer to install these packages automatically if they are missing.
 4. Extract this tool's portable zip.
 5. Double-click `Start-AppleMusic-Auto-Import.vbs`.
 6. Select one or more audio files.
-7. Fill in the Chinese prompts:
+7. Fill in the Chinese form:
    - song title
    - original artist
+   - album and year, if you know them
+   - extra hints, if needed
    - live or normal version
    - cover or original version
    - cover artist, if needed

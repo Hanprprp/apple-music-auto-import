@@ -1,21 +1,14 @@
-# v0.1.1
+# v0.1.2
 
-Metadata and artwork search improvement release.
+Usability and README promotion update.
 
 ## Changed
 
-- Chinese songs now prefer NetEase and Kuwo before iTunes to avoid wrong iTunes matches.
-- Added NetEase metadata search for title, artist, album, year, and artwork.
-- Added Kuwo album artwork extraction from provider image fields.
-- Added a second artwork fallback pass when the main metadata result has no cover.
-- Improved hints generated from separate title and artist prompts.
-- Confirmation dialogs now show whether artwork was found before import.
-
-## Tested Examples
-
-- Liang Jingru / Fish Leong - Hui Hu Xi De Tong
-- Yang Zongwei / Aska Yang - Yang Cong
-- Zheng Runze - Shun
+- Replaced multiple song-info prompts with one Chinese form.
+- The form includes title, original artist, album, year, extra hints, Live option, cover option, and cover artist.
+- Text fields now enable Chinese IME mode so Pinyin input is ready when the form opens.
+- If a detected result is wrong, clicking No returns to the same full form for edits.
+- README now explains the main use case more clearly: importing favorite live versions, rare covers, and local audio that Apple Music does not provide.
 
 ## Release Asset
 
