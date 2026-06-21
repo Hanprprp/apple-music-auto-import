@@ -507,6 +507,7 @@ function Download-VideoUrls {
     Write-Log (& $D "5q2j5Zyo5LiL6L29572R6aG16Z+z6aKR77yM6K+356iN562JLi4u")
 
     $downloadRoot = Join-Path $env:TEMP "AppleMusicAutoImportDownloads"
+    $resultFile = Join-Path $env:TEMP ("AppleMusicAutoImportDownload-" + [guid]::NewGuid().ToString() + ".json")
     New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
 
     $code = @'
@@ -518,7 +519,8 @@ from pathlib import Path
 import yt_dlp
 
 download_root = Path(sys.argv[1])
-urls = sys.argv[2:]
+result_file = Path(sys.argv[2])
+urls = sys.argv[3:]
 download_root.mkdir(parents=True, exist_ok=True)
 downloaded = []
 errors = []
@@ -531,6 +533,7 @@ for url in urls:
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
+        "noprogress": True,
         "windowsfilenames": True,
         "restrictfilenames": False,
         "ignoreerrors": False,
@@ -558,13 +561,17 @@ for path in downloaded:
         seen.add(path)
         unique.append(path)
 
-print(json.dumps({"files": unique, "errors": errors}, ensure_ascii=True))
+result_file.write_text(json.dumps({"files": unique, "errors": errors}, ensure_ascii=True), encoding="utf-8")
 if errors and not unique:
     sys.exit(1)
 '@
 
     try {
-        $json = Run-Python -Code $code -PyArgs (@($downloadRoot) + $Urls)
+        Run-Python -Code $code -PyArgs (@($downloadRoot, $resultFile) + $Urls) | Out-Null
+        if (-not (Test-Path -LiteralPath $resultFile)) {
+            throw "Download helper did not write a result file."
+        }
+        $json = Get-Content -LiteralPath $resultFile -Raw -Encoding UTF8
         $result = $json | ConvertFrom-Json
         if ($result.errors -and $result.errors.Count -gt 0) {
             Write-Log ("URL download partial errors: " + (($result.errors | Out-String).Trim()))
@@ -577,6 +584,9 @@ if errors and not unique:
     }
     catch {
         throw ((& $D "5LiL6L295aSx6LSl77ya") + $_.Exception.Message)
+    }
+    finally {
+        Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue
     }
 }
 
