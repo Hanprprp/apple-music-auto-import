@@ -652,6 +652,22 @@ def extract_book_title(text):
         return m.group(1).strip()
     return ""
 
+def extract_artist_near_book_title(text):
+    text = (text or "").strip()
+    if not text:
+        return ""
+    parts = [p.strip() for p in re.split(r"\s+-\s+| - |-|--|/", text, maxsplit=1) if p.strip()]
+    if len(parts) == 2 and len(norm(parts[0])) <= 30:
+        return parts[0]
+    before = re.split(r"[\u300a<]", text, maxsplit=1)[0]
+    before = re.sub(r"^\s*[\u3010\[].*?[\u3011\]]\s*", "", before)
+    before = re.sub(r"\b(4k|hd|hq|live|cover)\b", "", before, flags=re.I)
+    before = re.sub(r"[\[\]\(\)（）【】]+", " ", before)
+    before = re.sub(r"\s+", " ", before).strip(" -_")
+    if before and len(norm(before)) <= 30:
+        return before
+    return ""
+
 def norm(text):
     return re.sub(r"[\W_]+", "", (text or "").lower(), flags=re.UNICODE)
 
@@ -660,6 +676,31 @@ def has_cjk(text):
 
 def candidates_have_cjk(candidates):
     return any(has_cjk(" ".join([item.get("title", ""), item.get("artist", ""), item.get("query", "")])) for item in candidates)
+
+def artist_matches(expected, actual, min_score=0.48):
+    expected_n = norm(expected)
+    actual_n = norm(actual)
+    if not expected_n:
+        return True
+    if not actual_n:
+        return False
+    return expected_n in actual_n or actual_n in expected_n or ratio(expected, actual) >= min_score
+
+def explicit_candidate_artists(candidates):
+    artists = []
+    seen = set()
+    for item in candidates:
+        artist = (item.get("artist") or "").strip()
+        key = norm(artist)
+        if artist and key and key not in seen:
+            seen.add(key)
+            artists.append(artist)
+    return artists
+
+def matches_any_explicit_artist(explicit_artists, actual):
+    if not explicit_artists:
+        return True
+    return any(artist_matches(expected, actual) for expected in explicit_artists)
 
 def ratio(a, b):
     a, b = norm(a), norm(b)
@@ -681,9 +722,11 @@ def parse_candidates(source, hint):
     base = clean_name(source)
     hint = (hint or "").strip()
     book_title = extract_book_title(Path(source).stem) or extract_book_title(hint)
+    book_artist = extract_artist_near_book_title(hint) or extract_artist_near_book_title(Path(source).stem)
     candidates = []
     if book_title:
-        candidates.append({"artist": hint, "title": book_title, "query": f"{hint} {book_title}"})
+        if book_artist:
+            candidates.append({"artist": book_artist, "title": book_title, "query": f"{book_artist} {book_title}"})
         candidates.append({"artist": "", "title": book_title, "query": f"{hint} {book_title}"})
     if hint:
         candidates.append({"artist": "", "title": hint, "query": hint})
@@ -758,6 +801,7 @@ def known_override(candidates):
 
 def search_itunes(candidates):
     countries = ["CN", "HK", "TW", "US", "JP"]
+    explicit_artists = explicit_candidate_artists(candidates)
     best = None
     for cand in candidates:
         terms = []
@@ -774,8 +818,12 @@ def search_itunes(candidates):
                 except Exception:
                     continue
                 for result in data.get("results", []):
+                    if not matches_any_explicit_artist(explicit_artists, result.get("artistName")):
+                        continue
                     title_score = ratio(cand.get("title") or term, result.get("trackName"))
                     artist_score = ratio(cand.get("artist"), result.get("artistName")) if cand.get("artist") else 0.35
+                    if cand.get("artist") and not artist_matches(cand.get("artist"), result.get("artistName")):
+                        continue
                     score = title_score * 0.62 + artist_score * 0.38
                     if norm(cand.get("title")) and norm(cand.get("title")) == norm(result.get("trackName")):
                         score += 0.15
@@ -995,6 +1043,7 @@ def netease_cover_url(pic_id):
 def search_netease(candidates):
     best = None
     seen = set()
+    explicit_artists = explicit_candidate_artists(candidates)
     for cand in candidates:
         terms = []
         if cand.get("title") and cand.get("artist"):
@@ -1017,6 +1066,8 @@ def search_netease(candidates):
             for song in (payload.get("result") or {}).get("songs", []):
                 title = song.get("name") or ""
                 artists = " ".join(a.get("name", "") for a in song.get("artists", []) if isinstance(a, dict))
+                if not matches_any_explicit_artist(explicit_artists, artists):
+                    continue
                 album_obj = song.get("album") or {}
                 album = album_obj.get("name") or f"{title} - Single"
                 if not title:
@@ -1028,6 +1079,8 @@ def search_netease(candidates):
                     artist_score = ratio(cand.get("artist"), artists)
                     if norm(cand.get("artist")) and norm(cand.get("artist")) in norm(artists):
                         artist_score = max(artist_score, 0.98)
+                    if not artist_matches(cand.get("artist"), artists):
+                        continue
                 else:
                     artist_score = 0.75 if norm(artists) and norm(artists) in norm(term) else 0.35
                 score = title_score * 0.68 + artist_score * 0.32
@@ -1218,6 +1271,7 @@ def enrich_artwork(meta, candidates):
 
 def search_kuwo(candidates):
     best = None
+    explicit_artists = explicit_candidate_artists(candidates)
     for cand in candidates:
         terms = []
         if cand.get("title") and cand.get("artist"):
@@ -1246,6 +1300,8 @@ def search_kuwo(candidates):
             for result in data.get("abslist", []):
                 title = clean_provider_text(result.get("NAME") or result.get("SONGNAME"))
                 artist = clean_provider_text(result.get("ARTIST"))
+                if not matches_any_explicit_artist(explicit_artists, artist):
+                    continue
                 album = clean_provider_text(result.get("ALBUM"))
                 if not title:
                     continue
@@ -1254,6 +1310,8 @@ def search_kuwo(candidates):
                     title_score = max(title_score, 0.92)
                 if cand.get("artist"):
                     artist_score = ratio(cand.get("artist"), artist)
+                    if not artist_matches(cand.get("artist"), artist):
+                        continue
                 else:
                     artist_score = 0.75 if norm(artist) and norm(artist) in norm(term) else 0.35
                 score = title_score * 0.66 + artist_score * 0.34
