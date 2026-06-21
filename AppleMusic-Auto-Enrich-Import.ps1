@@ -184,12 +184,134 @@ function Pick-Files {
     Add-Type -AssemblyName System.Windows.Forms | Out-Null
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
     $dialog.Title = "Choose audio file(s)"
-    $dialog.Filter = "Audio files (*.m4a;*.mp4;*.aac;*.mp3;*.flac;*.wav)|*.m4a;*.mp4;*.aac;*.mp3;*.flac;*.wav|All files (*.*)|*.*"
+    $dialog.Filter = "Audio files (*.m4a;*.mp4;*.aac;*.mp3;*.flac;*.wav;*.webm;*.opus;*.ogg)|*.m4a;*.mp4;*.aac;*.mp3;*.flac;*.wav;*.webm;*.opus;*.ogg|All files (*.*)|*.*"
     $dialog.Multiselect = $true
     if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
         return @()
     }
     return $dialog.FileNames
+}
+
+function Get-ClipboardUrls {
+    Add-Type -AssemblyName System.Windows.Forms | Out-Null
+    $text = ""
+    try {
+        if ([System.Windows.Forms.Clipboard]::ContainsText()) {
+            $text = [System.Windows.Forms.Clipboard]::GetText()
+        }
+    }
+    catch {
+        return @()
+    }
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return @()
+    }
+    $matches = [regex]::Matches($text, 'https?://[^\s<>"'']+')
+    $urls = New-Object System.Collections.Generic.List[string]
+    foreach ($match in $matches) {
+        $url = $match.Value.Trim().TrimEnd('.', ',', ';', ')', ']', '}')
+        if ($url -and -not $urls.Contains($url)) {
+            $urls.Add($url)
+        }
+    }
+    return $urls.ToArray()
+}
+
+function Ask-AudioSource {
+    param([string[]]$ClipboardUrls = @())
+
+    Add-Type -AssemblyName System.Windows.Forms | Out-Null
+    Add-Type -AssemblyName System.Drawing | Out-Null
+    $D = { param([string]$B64) [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($B64)) }
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = (& $D "6YCJ5oup6Z+z5rqQ5p2l5rqQ")
+    $form.StartPosition = "CenterScreen"
+    $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $false
+    $form.ClientSize = New-Object System.Drawing.Size(600, 360)
+    $form.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 9)
+
+    $note = New-Object System.Windows.Forms.Label
+    $note.AutoSize = $false
+    $note.Location = New-Object System.Drawing.Point(18, 14)
+    $note.Size = New-Object System.Drawing.Size(560, 42)
+    $note.Text = (& $D "5Y+v5Lul57KY6LS0IFlvdVR1YmUgLyBC56uZIC8g572R6aG16KeG6aKR6ZO+5o6l77yb5Lmf5Y+v5Lul57un57ut6YCJ5oup5pys5Zyw6Z+z6aKR5paH5Lu244CC")
+    $form.Controls.Add($note)
+
+    if ($ClipboardUrls -and $ClipboardUrls.Count -gt 0) {
+        $clipNote = New-Object System.Windows.Forms.Label
+        $clipNote.AutoSize = $false
+        $clipNote.Location = New-Object System.Drawing.Point(18, 58)
+        $clipNote.Size = New-Object System.Drawing.Size(560, 24)
+        $clipNote.Text = (& $D "5qOA5rWL5Yiw5Ymq6LS05p2/6ZO+5o6l77yM5bey6Ieq5Yqo5aGr5YWl44CC")
+        $form.Controls.Add($clipNote)
+    }
+
+    $label = New-Object System.Windows.Forms.Label
+    $label.AutoSize = $false
+    $label.Location = New-Object System.Drawing.Point(18, 90)
+    $label.Size = New-Object System.Drawing.Size(560, 24)
+    $label.Text = (& $D "572R6aG16KeG6aKR6ZO+5o6l77yI5LiA6KGM5LiA5Liq77yJ")
+    $form.Controls.Add($label)
+
+    $urlBox = New-Object System.Windows.Forms.TextBox
+    $urlBox.Location = New-Object System.Drawing.Point(20, 116)
+    $urlBox.Size = New-Object System.Drawing.Size(560, 160)
+    $urlBox.Multiline = $true
+    $urlBox.ScrollBars = "Vertical"
+    $urlBox.ImeMode = [System.Windows.Forms.ImeMode]::Off
+    if ($ClipboardUrls -and $ClipboardUrls.Count -gt 0) {
+        $urlBox.Text = ($ClipboardUrls -join "`r`n")
+    }
+    $form.Controls.Add($urlBox)
+
+    $downloadButton = New-Object System.Windows.Forms.Button
+    $downloadButton.Location = New-Object System.Drawing.Point(250, 304)
+    $downloadButton.Size = New-Object System.Drawing.Size(100, 30)
+    $downloadButton.Text = (& $D "5LiL6L296ZO+5o6l")
+    $form.Controls.Add($downloadButton)
+
+    $fileButton = New-Object System.Windows.Forms.Button
+    $fileButton.Location = New-Object System.Drawing.Point(360, 304)
+    $fileButton.Size = New-Object System.Drawing.Size(110, 30)
+    $fileButton.Text = (& $D "6YCJ5oup5pys5Zyw5paH5Lu2")
+    $form.Controls.Add($fileButton)
+
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Location = New-Object System.Drawing.Point(482, 304)
+    $cancelButton.Size = New-Object System.Drawing.Size(96, 30)
+    $cancelButton.Text = (& $D "5Y+W5raI")
+    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $form.Controls.Add($cancelButton)
+    $form.CancelButton = $cancelButton
+
+    $script:AudioSourceResult = $null
+    $downloadButton.Add_Click({
+        $urls = [regex]::Matches($urlBox.Text, 'https?://[^\s<>"'']+') | ForEach-Object { $_.Value.Trim().TrimEnd('.', ',', ';', ')', ']', '}') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+        if (-not $urls -or $urls.Count -eq 0) {
+            [System.Windows.Forms.MessageBox]::Show((& $D "5rKh5pyJ5Y+v5LiL6L2955qE6ZO+5o6l44CC"), $form.Text, "OK", "Warning") | Out-Null
+            return
+        }
+        $script:AudioSourceResult = [PSCustomObject]@{ Mode = "Url"; Urls = @($urls); Cancelled = $false }
+        $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $form.Close()
+    })
+    $fileButton.Add_Click({
+        $script:AudioSourceResult = [PSCustomObject]@{ Mode = "Files"; Urls = @(); Cancelled = $false }
+        $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $form.Close()
+    })
+
+    $urlBox.Select()
+    $dialogResult = $form.ShowDialog()
+    if ($dialogResult -ne [System.Windows.Forms.DialogResult]::OK -or -not $script:AudioSourceResult) {
+        return [PSCustomObject]@{ Mode = "Cancel"; Urls = @(); Cancelled = $true }
+    }
+    $result = $script:AudioSourceResult
+    $script:AudioSourceResult = $null
+    return $result
 }
 
 function Invoke-PythonProbe {
@@ -247,7 +369,7 @@ function Resolve-Python {
 
 function Ensure-PythonDependencies {
     param([string]$PythonExe)
-    $checkCode = "import importlib.util, sys; missing=[name for name in ('mutagen','imageio_ffmpeg','PIL') if importlib.util.find_spec(name) is None]; print(','.join(missing)); sys.exit(1 if missing else 0)"
+    $checkCode = "import importlib.util, sys; missing=[name for name in ('mutagen','imageio_ffmpeg','PIL','yt_dlp') if importlib.util.find_spec(name) is None]; print(','.join(missing)); sys.exit(1 if missing else 0)"
     $missing = (& $PythonExe -c $checkCode 2>$null | Out-String).Trim()
     if ($LASTEXITCODE -eq 0) {
         return
@@ -255,7 +377,7 @@ function Ensure-PythonDependencies {
 
     Add-Type -AssemblyName System.Windows.Forms | Out-Null
     $answer = [System.Windows.Forms.MessageBox]::Show(
-        "This computer is missing Python package(s): $missing`r`n`r`nInstall required packages now?`r`n`r`nRequires internet: mutagen, imageio-ffmpeg, pillow",
+        "This computer is missing Python package(s): $missing`r`n`r`nInstall required packages now?`r`n`r`nRequires internet: mutagen, imageio-ffmpeg, pillow, yt-dlp",
         "Apple Music Auto Import",
         "YesNo",
         "Question"
@@ -265,9 +387,9 @@ function Ensure-PythonDependencies {
     }
 
     & $PythonExe -m ensurepip --upgrade | Out-Null
-    & $PythonExe -m pip install --user --upgrade mutagen imageio-ffmpeg pillow
+    & $PythonExe -m pip install --user --upgrade mutagen imageio-ffmpeg pillow yt-dlp
     if ($LASTEXITCODE -ne 0) {
-        throw "Failed to install Python packages. Install manually: python -m pip install --user mutagen imageio-ffmpeg pillow"
+        throw "Failed to install Python packages. Install manually: python -m pip install --user mutagen imageio-ffmpeg pillow yt-dlp"
     }
 }
 
@@ -368,6 +490,93 @@ function Run-Python {
     finally {
         Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Download-VideoUrls {
+    param(
+        [string[]]$Urls,
+        [string]$PythonExe
+    )
+
+    if (-not $Urls -or $Urls.Count -eq 0) {
+        return @()
+    }
+
+    $D = { param([string]$B64) [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($B64)) }
+    Write-Log (& $D "5q2j5Zyo5LiL6L29572R6aG16Z+z6aKR77yM6K+356iN562JLi4u")
+
+    $downloadRoot = Join-Path $env:TEMP "AppleMusicAutoImportDownloads"
+    New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
+
+    $code = @'
+import json
+import os
+import sys
+from pathlib import Path
+
+import yt_dlp
+
+download_root = Path(sys.argv[1])
+urls = sys.argv[2:]
+download_root.mkdir(parents=True, exist_ok=True)
+downloaded = []
+errors = []
+
+for url in urls:
+    before = {p.resolve() for p in download_root.glob("*") if p.is_file()}
+    options = {
+        "format": "bestaudio/best",
+        "outtmpl": str(download_root / "%(title).180s [%(id)s].%(ext)s"),
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "windowsfilenames": True,
+        "restrictfilenames": False,
+        "ignoreerrors": False,
+    }
+    try:
+        with yt_dlp.YoutubeDL(options) as ydl:
+            info = ydl.extract_info(url, download=True)
+            requested = info.get("requested_downloads") or []
+            for item in requested:
+                filepath = item.get("filepath")
+                if filepath and Path(filepath).exists():
+                    downloaded.append(str(Path(filepath).resolve()))
+            if not requested:
+                after = {p.resolve() for p in download_root.glob("*") if p.is_file()}
+                new_files = sorted(after - before, key=lambda p: p.stat().st_mtime, reverse=True)
+                if new_files:
+                    downloaded.append(str(new_files[0]))
+    except Exception as exc:
+        errors.append(f"{url}: {exc}")
+
+seen = set()
+unique = []
+for path in downloaded:
+    if path not in seen and Path(path).exists():
+        seen.add(path)
+        unique.append(path)
+
+print(json.dumps({"files": unique, "errors": errors}, ensure_ascii=True))
+if errors and not unique:
+    sys.exit(1)
+'@
+
+    try {
+        $json = Run-Python -Code $code -PyArgs (@($downloadRoot) + $Urls)
+        $result = $json | ConvertFrom-Json
+        if ($result.errors -and $result.errors.Count -gt 0) {
+            Write-Log ("URL download partial errors: " + (($result.errors | Out-String).Trim()))
+        }
+        $files = @($result.files) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        if ($files.Count -eq 0) {
+            throw "No audio file was downloaded."
+        }
+        return $files
+    }
+    catch {
+        throw ((& $D "5LiL6L295aSx6LSl77ya") + $_.Exception.Message)
     }
 }
 
@@ -1267,8 +1476,20 @@ if __name__ == "__main__":
 
 try {
     Write-Log "Started Apple Music auto import."
+    $pythonForCheck = $null
     if (-not $InputFiles -or $InputFiles.Count -eq 0) {
-        $InputFiles = Pick-Files
+        $source = Ask-AudioSource -ClipboardUrls (Get-ClipboardUrls)
+        if ($source.Cancelled) {
+            exit 0
+        }
+        if ($source.Mode -eq "Url") {
+            $pythonForCheck = Resolve-Python
+            Ensure-PythonDependencies -PythonExe $pythonForCheck
+            $InputFiles = Download-VideoUrls -Urls $source.Urls -PythonExe $pythonForCheck
+        }
+        else {
+            $InputFiles = Pick-Files
+        }
     }
 
     if (-not $InputFiles -or $InputFiles.Count -eq 0) {
@@ -1276,8 +1497,10 @@ try {
     }
 
     $autoAdd = Resolve-AppleMusicAutoAdd
-    $pythonForCheck = Resolve-Python
-    Ensure-PythonDependencies -PythonExe $pythonForCheck
+    if (-not $pythonForCheck) {
+        $pythonForCheck = Resolve-Python
+        Ensure-PythonDependencies -PythonExe $pythonForCheck
+    }
 
     $done = New-Object System.Collections.Generic.List[string]
     $failed = New-Object System.Collections.Generic.List[string]

@@ -1,14 +1,26 @@
-# v0.1.2
+# v0.2.0
 
-Usability and README promotion update.
+Web video link download release.
+
+## Added
+
+- New source window at startup.
+- Automatically detects supported video links from the clipboard.
+- Lets users paste YouTube-style webpage video links, one per line.
+- Downloads best available audio with `yt-dlp`, then sends it through the existing Apple Music metadata/import flow.
+- Local file selection still works from the same source window.
+- Added `.webm`, `.opus`, and `.ogg` to local audio file selection.
 
 ## Changed
 
-- Replaced multiple song-info prompts with one Chinese form.
-- The form includes title, original artist, album, year, extra hints, Live option, cover option, and cover artist.
-- Text fields now enable Chinese IME mode so Pinyin input is ready when the form opens.
-- If a detected result is wrong, clicking No returns to the same full form for edits.
-- README now explains the main use case more clearly: importing favorite live versions, rare covers, and local audio that Apple Music does not provide.
+- Python dependency auto-install now includes `yt-dlp`.
+- README and portable instructions now explain the link-download workflow.
+- Desktop Chinese instructions were updated for link downloads.
+
+## Notes
+
+- Use link downloads only for audio/video you have the right to download and use.
+- This tool does not bypass DRM, paid access, login-only restrictions, or platform protections.
 
 ## Release Asset
 

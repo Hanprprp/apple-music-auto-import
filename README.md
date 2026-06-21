@@ -2,12 +2,13 @@
 
 Windows tool for tagging local audio files and importing them into Apple Music.
 
-Have a favorite live performance, rare cover, YouTube rip, or local audio file that Apple Music does not have? This tool turns it into a clean Apple Music library item with title, artist, album, year, cover art, credits when available, and lyrics when available.
+Have a favorite live performance, rare cover, YouTube video, or local audio file that Apple Music does not have? Copy the video link or choose a local file, and this tool turns it into a clean Apple Music library item with title, artist, album, year, cover art, credits when available, and lyrics when available.
 
-It asks for the song details in one Chinese form, searches metadata, writes tags and cover art into an M4A file, and drops the processed file into Apple Music's auto-import folder.
+It can download supported webpage video links through `yt-dlp`, convert the audio to M4A, ask for the song details in one Chinese form, search metadata, write tags and cover art, and drop the processed file into Apple Music's auto-import folder.
 
 ## Features
 
+- Paste supported webpage video links, including YouTube-style links, and download best available audio automatically
 - Select local audio files: `.m4a`, `.mp4`, `.aac`, `.mp3`, `.flac`, `.wav`
 - One-window Chinese form for title, artist, album, year, extra hints, live version, and cover version
 - Chinese input mode is enabled in the form fields so Pinyin input stays ready
@@ -37,12 +38,12 @@ Do not copy only the `.ps1` file. Keep the `.vbs` launcher and `.ps1` script in 
 - Windows
 - Apple Music for Windows, opened at least once
 - Python 3
-- Internet access for metadata search and first-time dependency install
+- Internet access for link download, metadata search, and first-time dependency install
 
 Python packages:
 
 ```powershell
-python -m pip install --user mutagen imageio-ffmpeg pillow
+python -m pip install --user mutagen imageio-ffmpeg pillow yt-dlp
 ```
 
 The tool will offer to install these packages automatically if they are missing.
@@ -54,8 +55,9 @@ The tool will offer to install these packages automatically if they are missing.
 3. Install Python 3 if needed.
 4. Extract this tool's portable zip.
 5. Double-click `Start-AppleMusic-Auto-Import.vbs`.
-6. Select one or more audio files.
-7. Fill in the Chinese form:
+6. Paste a webpage video link, or choose one or more local audio files.
+7. If a link is used, the tool downloads the best available audio first.
+8. Fill in the Chinese form:
    - song title
    - original artist
    - album and year, if you know them
@@ -63,7 +65,7 @@ The tool will offer to install these packages automatically if they are missing.
    - live or normal version
    - cover or original version
    - cover artist, if needed
-8. Confirm the detected metadata before import.
+9. Confirm the detected metadata before import.
 
 If the auto-import folder cannot be found, the tool asks you to choose it manually.
 
@@ -97,6 +99,7 @@ The album becomes:
 
 The tool currently uses:
 
+- yt-dlp for supported webpage video/audio downloads
 - iTunes Search API
 - NetEase public search endpoint for Chinese metadata and artwork
 - Kuwo fallback search for Chinese metadata and artwork
@@ -113,4 +116,4 @@ The tool writes normal lyrics when available. Apple Music local files do not rel
 
 This is an unofficial local automation tool. It is not affiliated with Apple, Apple Music, iTunes, MusicBrainz, LRCLIB, NetEase, Kuwo, or any music platform.
 
-Use it only with audio files you have the right to use. Metadata and artwork are fetched from public endpoints where available, and availability/accuracy may vary.
+Use it only with audio/video you have the right to download and use. This tool does not bypass DRM, paid access, login-only restrictions, or platform protections. Metadata and artwork are fetched from public endpoints where available, and availability/accuracy may vary.
