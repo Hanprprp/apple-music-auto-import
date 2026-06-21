@@ -1,22 +1,24 @@
-# v0.1.0
+# v0.1.1
 
-Initial portable release.
+Metadata and artwork search improvement release.
 
-## Included
+## Changed
 
-- Portable Windows launcher
-- Main PowerShell metadata/import script
-- iTunes metadata search
-- Chinese music fallback search
-- Live version handling
-- Cover version handling
-- Bad download filename handling, including `videoplayback.m4a`
-- Apple Music auto-import folder detection
-- Python dependency check and install prompt
+- Chinese songs now prefer NetEase and Kuwo before iTunes to avoid wrong iTunes matches.
+- Added NetEase metadata search for title, artist, album, year, and artwork.
+- Added Kuwo album artwork extraction from provider image fields.
+- Added a second artwork fallback pass when the main metadata result has no cover.
+- Improved hints generated from separate title and artist prompts.
+- Confirmation dialogs now show whether artwork was found before import.
+
+## Tested Examples
+
+- Liang Jingru / Fish Leong - Hui Hu Xi De Tong
+- Yang Zongwei / Aska Yang - Yang Cong
+- Zheng Runze - Shun
 
 ## Release Asset
 
 Attach:
 
 `AppleMusicAutoImportPortable.zip`
-

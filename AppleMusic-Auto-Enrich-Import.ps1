@@ -224,7 +224,9 @@ function Run-Python {
 $processor = @'
 import difflib
 import ast
+import base64
 import html
+import hashlib
 import json
 import os
 import re
@@ -284,6 +286,12 @@ def extract_book_title(text):
 def norm(text):
     return re.sub(r"[\W_]+", "", (text or "").lower(), flags=re.UNICODE)
 
+def has_cjk(text):
+    return bool(re.search(r"[\u3400-\u9fff]", text or ""))
+
+def candidates_have_cjk(candidates):
+    return any(has_cjk(" ".join([item.get("title", ""), item.get("artist", ""), item.get("query", "")])) for item in candidates)
+
 def ratio(a, b):
     a, b = norm(a), norm(b)
     if not a or not b:
@@ -314,6 +322,10 @@ def parse_candidates(source, hint):
         if len(parts) == 2:
             candidates.append({"artist": parts[0], "title": parts[1], "query": hint})
             candidates.append({"artist": parts[1], "title": parts[0], "query": hint})
+        space_parts = [p.strip() for p in hint.split() if p.strip()]
+        if len(space_parts) >= 2:
+            candidates.append({"artist": space_parts[0], "title": " ".join(space_parts[1:]), "query": hint})
+            candidates.append({"artist": " ".join(space_parts[:-1]), "title": space_parts[-1], "query": hint})
         else:
             if weak_title(base):
                 candidates.append({"artist": "", "title": "", "query": hint})
@@ -403,11 +415,10 @@ def search_itunes(candidates):
                     item = {"score": round(score, 4), "country": country, "data": result}
                     if best is None or item["score"] > best["score"]:
                         best = item
-    if not best or best["score"] < 0.43:
+    if not best or best["score"] < 0.55:
         return None
     r = best["data"]
-    artwork = r.get("artworkUrl100") or ""
-    artwork = re.sub(r"/\d+x\d+bb\.(jpg|png)$", r"/1200x1200bb.\1", artwork)
+    artwork = normalize_itunes_artwork(r.get("artworkUrl100") or "")
     release_date = r.get("releaseDate") or ""
     meta = {
         "title": r.get("trackName") or "",
@@ -558,10 +569,283 @@ def apply_live_adjustment(meta, source, hint):
 
 def clean_provider_text(text):
     text = html.unescape(text or "")
+    text = re.sub(
+        r"\\u([0-9a-fA-F]{4})",
+        lambda m: chr(int(m.group(1), 16)),
+        text,
+    )
     text = re.sub(r"<.*?>", "", text)
     text = text.replace("\xa0", " ")
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+def normalize_itunes_artwork(url):
+    if not url:
+        return ""
+    return re.sub(r"/\d+x\d+bb\.(jpg|jpeg|png)$", r"/1200x1200bb.\1", url, flags=re.I)
+
+def has_artwork(meta):
+    return bool(meta.get("artwork_url") or meta.get("generated_artwork"))
+
+def append_source(meta, text):
+    old_source = meta.get("source") or ""
+    if text and text not in old_source:
+        meta["source"] = (old_source + "; " + text).strip("; ")
+
+def kuwo_image_url(short_path, kind="album"):
+    short_path = (short_path or "").strip()
+    if not short_path:
+        return ""
+    if short_path.startswith("//"):
+        return "https:" + short_path
+    if short_path.startswith("http://") or short_path.startswith("https://"):
+        return short_path
+    short_path = short_path.lstrip("/")
+    if "/star/albumcover/" in short_path or "/star/starheads/" in short_path:
+        return "https://img4.kuwo.cn/star/" + short_path.split("/star/", 1)[1]
+    folder = "starheads" if kind == "artist" else "albumcover"
+    return f"https://img4.kuwo.cn/star/{folder}/500/{short_path}"
+
+def kuwo_album_artwork(result):
+    for key in ("web_albumpic_short", "PICPATH"):
+        url = kuwo_image_url(result.get(key), "album")
+        if url:
+            return url
+    return ""
+
+def netease_cover_url(pic_id):
+    pic_id = str(pic_id or "").strip()
+    if not pic_id or pic_id == "0":
+        return ""
+    magic = "3go8&$8*3*3h0k(2)2"
+    mixed = bytes(ord(ch) ^ ord(magic[i % len(magic)]) for i, ch in enumerate(pic_id))
+    digest = base64.b64encode(hashlib.md5(mixed).digest()).decode("ascii")
+    digest = digest.replace("/", "_").replace("+", "-")
+    return f"https://p3.music.126.net/{digest}/{pic_id}.jpg?param=1200y1200"
+
+def search_netease(candidates):
+    best = None
+    seen = set()
+    for cand in candidates:
+        terms = []
+        if cand.get("title") and cand.get("artist"):
+            terms.append(f"{cand['artist']} {cand['title']}")
+            terms.append(f"{cand['title']} {cand['artist']}")
+        terms.append(cand.get("query") or cand.get("title") or "")
+        for term in [t for t in terms if t.strip() and t not in seen]:
+            seen.add(term)
+            data = urllib.parse.urlencode({"s": term, "type": 1, "offset": 0, "total": "true", "limit": 10}).encode("utf-8")
+            try:
+                req = urllib.request.Request(
+                    "https://music.163.com/api/search/get",
+                    data=data,
+                    headers={"User-Agent": USER_AGENT, "Referer": "https://music.163.com/"},
+                )
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    payload = json.loads(resp.read().decode("utf-8", "replace"))
+            except Exception:
+                continue
+            for song in (payload.get("result") or {}).get("songs", []):
+                title = song.get("name") or ""
+                artists = " ".join(a.get("name", "") for a in song.get("artists", []) if isinstance(a, dict))
+                album_obj = song.get("album") or {}
+                album = album_obj.get("name") or f"{title} - Single"
+                if not title:
+                    continue
+                title_score = ratio(cand.get("title") or term, title)
+                if norm(cand.get("title")) and norm(cand.get("title")) == norm(title):
+                    title_score = max(title_score, 1.0)
+                if cand.get("artist"):
+                    artist_score = ratio(cand.get("artist"), artists)
+                    if norm(cand.get("artist")) and norm(cand.get("artist")) in norm(artists):
+                        artist_score = max(artist_score, 0.98)
+                else:
+                    artist_score = 0.75 if norm(artists) and norm(artists) in norm(term) else 0.35
+                score = title_score * 0.68 + artist_score * 0.32
+                if norm(title) and norm(title) in norm(term):
+                    score += 0.05
+                publish_time = album_obj.get("publishTime") or 0
+                year = ""
+                release_date = ""
+                if publish_time:
+                    try:
+                        release_date = time.strftime("%Y-%m-%d", time.localtime(int(publish_time) / 1000))
+                        year = release_date[:4]
+                    except Exception:
+                        pass
+                artwork = album_obj.get("picUrl") or netease_cover_url(album_obj.get("picId"))
+                item = {
+                    "score": round(score, 4),
+                    "title": title,
+                    "artist": artists,
+                    "album": album,
+                    "year": year,
+                    "release_date": release_date,
+                    "artwork_url": artwork,
+                }
+                if best is None or item["score"] > best["score"]:
+                    best = item
+    if not best or best["score"] < 0.60:
+        return None
+    meta = {
+        "title": best["title"],
+        "artist": best["artist"] or "Unknown Artist",
+        "album": best["album"] or f"{best['title']} - Single",
+        "album_artist": best["artist"] or "Unknown Artist",
+        "year": best["year"],
+        "release_date": best["release_date"],
+        "genre": "",
+        "track_number": 1,
+        "track_count": 1,
+        "disc_number": 1,
+        "disc_count": 1,
+        "source": f"NetEase Search score={best['score']}",
+    }
+    if best.get("artwork_url"):
+        meta["artwork_url"] = best["artwork_url"]
+    return meta
+
+def find_itunes_artwork(meta, candidates):
+    title = meta.get("title") or ""
+    artist = meta.get("artist") or ""
+    album = meta.get("album") or ""
+    terms = []
+    for term in (f"{artist} {title}", f"{title} {artist}", f"{artist} {album}", title):
+        if term.strip():
+            terms.append(term.strip())
+    for cand in candidates:
+        query = cand.get("query") or " ".join([cand.get("artist", ""), cand.get("title", "")]).strip()
+        if query:
+            terms.append(query)
+
+    best = None
+    seen = set()
+    countries = ["CN", "HK", "TW", "US", "JP", "SG"]
+    for term in terms:
+        if term in seen:
+            continue
+        seen.add(term)
+        for country in countries:
+            qs = urllib.parse.urlencode({"term": term, "media": "music", "entity": "song", "limit": 10, "country": country})
+            try:
+                data = http_json(f"https://itunes.apple.com/search?{qs}")
+            except Exception:
+                continue
+            for result in data.get("results", []):
+                artwork = normalize_itunes_artwork(result.get("artworkUrl100") or "")
+                if not artwork:
+                    continue
+                score = ratio(title or term, result.get("trackName")) * 0.62
+                score += (ratio(artist, result.get("artistName")) if artist else 0.35) * 0.28
+                score += (ratio(album, result.get("collectionName")) if album else 0.2) * 0.10
+                if norm(title) and norm(title) == norm(result.get("trackName")):
+                    score += 0.16
+                if norm(artist) and norm(artist) == norm(result.get("artistName")):
+                    score += 0.12
+                item = {"score": score, "url": artwork, "country": country}
+                if best is None or item["score"] > best["score"]:
+                    best = item
+    if best and best["score"] >= 0.58:
+        return best
+    return None
+
+def find_kuwo_artwork(meta, candidates):
+    title = meta.get("title") or ""
+    artist = meta.get("artist") or ""
+    search_candidates = [{"title": title, "artist": artist, "query": f"{artist} {title}".strip()}] + candidates
+    best = None
+    for cand in search_candidates:
+        term = cand.get("query") or " ".join([cand.get("artist", ""), cand.get("title", "")]).strip()
+        if not term:
+            continue
+        qs = urllib.parse.urlencode({
+            "all": term,
+            "ft": "music",
+            "client": "kt",
+            "pn": 0,
+            "rn": 12,
+            "rformat": "json",
+            "encoding": "utf8",
+        })
+        try:
+            req = urllib.request.Request(f"http://search.kuwo.cn/r.s?{qs}", headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                data = ast.literal_eval(resp.read().decode("utf-8", "replace"))
+        except Exception:
+            continue
+        for result in data.get("abslist", []):
+            artwork = kuwo_album_artwork(result)
+            if not artwork:
+                continue
+            r_title = clean_provider_text(result.get("NAME") or result.get("SONGNAME"))
+            r_artist = clean_provider_text(result.get("ARTIST"))
+            score = ratio(title or cand.get("title") or term, r_title) * 0.70
+            score += (ratio(artist or cand.get("artist"), r_artist) if (artist or cand.get("artist")) else 0.35) * 0.30
+            songname = clean_provider_text(result.get("SONGNAME"))
+            if any(x in songname.lower() for x in ("dj", "slowed", "remix", "\u7248")) and norm(songname) != norm(r_title):
+                score -= 0.18
+            item = {"score": score, "url": artwork}
+            if best is None or item["score"] > best["score"]:
+                best = item
+    if best and best["score"] >= 0.56:
+        return best
+    return None
+
+def find_netease_artwork(meta, candidates):
+    title = meta.get("title") or ""
+    artist = meta.get("artist") or ""
+    terms = [f"{artist} {title}".strip(), f"{title} {artist}".strip()]
+    for cand in candidates:
+        if cand.get("query"):
+            terms.append(cand["query"])
+    best = None
+    seen = set()
+    for term in [t for t in terms if t and t not in seen]:
+        seen.add(term)
+        data = urllib.parse.urlencode({"s": term, "type": 1, "offset": 0, "total": "true", "limit": 10}).encode("utf-8")
+        try:
+            req = urllib.request.Request(
+                "https://music.163.com/api/search/get",
+                data=data,
+                headers={"User-Agent": USER_AGENT, "Referer": "https://music.163.com/"},
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                payload = json.loads(resp.read().decode("utf-8", "replace"))
+        except Exception:
+            continue
+        for song in (payload.get("result") or {}).get("songs", []):
+            album_obj = song.get("album") or {}
+            artists = " ".join(a.get("name", "") for a in song.get("artists", []) if isinstance(a, dict))
+            artwork = album_obj.get("picUrl") or netease_cover_url(album_obj.get("picId"))
+            if not artwork:
+                continue
+            score = ratio(title or term, song.get("name")) * 0.68
+            score += (ratio(artist, artists) if artist else 0.35) * 0.32
+            if norm(title) and norm(title) == norm(song.get("name")):
+                score += 0.12
+            if norm(artist) and norm(artist) in norm(artists):
+                score += 0.10
+            item = {"score": score, "url": artwork}
+            if best is None or item["score"] > best["score"]:
+                best = item
+    if best and best["score"] >= 0.58:
+        return best
+    return None
+
+def enrich_artwork(meta, candidates):
+    if has_artwork(meta):
+        return meta
+    for provider_name, finder in (
+        ("iTunes artwork fallback", find_itunes_artwork),
+        ("Kuwo artwork fallback", find_kuwo_artwork),
+        ("NetEase artwork fallback", find_netease_artwork),
+    ):
+        found = finder(meta, candidates)
+        if found and found.get("url"):
+            meta["artwork_url"] = found["url"]
+            append_source(meta, f"{provider_name} score={found.get('score', 0):.4f}")
+            return meta
+    return meta
 
 def search_kuwo(candidates):
     best = None
@@ -607,7 +891,14 @@ def search_kuwo(candidates):
                 songname = clean_provider_text(result.get("SONGNAME"))
                 if any(x in songname.lower() for x in ("dj", "slowed", "remix", "\u7248")) and norm(songname) != norm(title):
                     score -= 0.08
-                item = {"score": round(score, 4), "data": result, "title": title, "artist": artist, "album": album}
+                item = {
+                    "score": round(score, 4),
+                    "data": result,
+                    "title": title,
+                    "artist": artist,
+                    "album": album,
+                    "artwork_url": kuwo_album_artwork(result),
+                }
                 if best is None or item["score"] > best["score"]:
                     best = item
     if not best or best["score"] < 0.45:
@@ -616,7 +907,7 @@ def search_kuwo(candidates):
     title = best["title"]
     artist = best["artist"] or "Unknown Artist"
     album = best["album"] or f"{title} - Single"
-    return {
+    meta = {
         "title": title,
         "artist": artist,
         "album": album,
@@ -630,6 +921,9 @@ def search_kuwo(candidates):
         "disc_count": 1,
         "source": f"Kuwo Search score={best['score']}",
     }
+    if best.get("artwork_url"):
+        meta["artwork_url"] = best["artwork_url"]
+    return meta
 
 def safe_filename(text):
     text = re.sub(r'[\\/:*?"<>|]+', "_", text or "").strip(" .")
@@ -722,7 +1016,12 @@ def main():
         live_hint = hint + " __force_studio__"
     candidates = parse_candidates(source, hint)
     override_meta = known_override(candidates)
-    meta = override_meta or search_itunes(candidates) or search_kuwo(candidates)
+    if override_meta:
+        meta = override_meta
+    elif candidates_have_cjk(candidates):
+        meta = search_netease(candidates) or search_kuwo(candidates) or search_itunes(candidates)
+    else:
+        meta = search_itunes(candidates) or search_netease(candidates) or search_kuwo(candidates)
     fallback = candidates[0]
     if meta is None:
         meta = {
@@ -755,6 +1054,7 @@ def main():
 
     if auto_add == "__PROBE__":
         preview_meta = apply_live_adjustment(dict(meta), source, live_hint)
+        preview_meta = enrich_artwork(preview_meta, candidates)
         print(json.dumps({
             "title": preview_meta.get("title"),
             "artist": preview_meta.get("artist"),
@@ -762,6 +1062,7 @@ def main():
             "year": preview_meta.get("year") or preview_meta.get("release_date", "")[:4],
             "genre": preview_meta.get("genre") or "",
             "source": preview_meta.get("source"),
+            "artwork": bool(preview_meta.get("artwork_url") or preview_meta.get("generated_artwork")),
             "online_match": bool(preview_meta.get("online_match")),
         }, ensure_ascii=False))
         return
@@ -772,6 +1073,7 @@ def main():
     if lyrics:
         meta["lyrics"] = lyrics
     meta = apply_live_adjustment(meta, source, live_hint)
+    meta = enrich_artwork(meta, candidates)
 
     out_name = safe_filename(f"{meta.get('title')} - {meta.get('artist')}.m4a")
     tmp_dest = str(Path(os.environ.get("TEMP", ".")) / ("am-auto-" + out_name))
@@ -871,7 +1173,14 @@ try {
         $probe = $null
 
         for ($attempt = 1; $attempt -le 4; $attempt++) {
-            $pieces = @($artistName, $songTitle, $albumName, $yearText, $extraText) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            $pieces = New-Object System.Collections.Generic.List[string]
+            if (-not [string]::IsNullOrWhiteSpace($artistName) -and -not [string]::IsNullOrWhiteSpace($songTitle)) {
+                $pieces.Add("$artistName - $songTitle")
+            }
+            else {
+                @($artistName, $songTitle) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $pieces.Add($_) }
+            }
+            @($albumName, $yearText, $extraText) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $pieces.Add($_) }
             $hint = ($pieces -join " ")
             Write-Log "Probe attempt $attempt for $file : $hint"
             try {
@@ -915,19 +1224,25 @@ try {
             }
 
             if ($probe -and $probe.online_match) {
+                $artworkStatus = (& $Z "5peg")
+                if ($probe.artwork) { $artworkStatus = (& $Z "5pyJ") }
                 $text = (& $Z "5oiR5om+5Yiw55qE57uT5p6c5piv77ya") + "`r`n`r`n" +
                     (& $Z "5q2M5ZCN77ya") + $probe.title + "`r`n" +
                     (& $Z "5q2M5omL77ya") + $probe.artist + "`r`n" +
                     (& $Z "5LiT6L6R77ya") + $probe.album + "`r`n" +
-                    (& $Z "5bm05Lu977ya") + $probe.year + "`r`n`r`n" +
+                    (& $Z "5bm05Lu977ya") + $probe.year + "`r`n" +
+                    (& $Z "5bCB6Z2i77ya") + $artworkStatus + "`r`n`r`n" +
                     (& $Z "6L+Z5piv5q2j56Gu55qE5q2M5ZCX77yf")
             }
             elseif ($probe) {
+                $artworkStatus = (& $Z "5peg")
+                if ($probe.artwork) { $artworkStatus = (& $Z "5pyJ") }
                 $text = (& $Z "5pqC5pe25rKh5pyJ5Zyo572R5LiK57K+56Gu5Yy56YWN5Yiw77yM5Y+q6IO95oyJ5L2g5o+Q5L6b55qE5L+h5oGv5a+85YWl77ya") + "`r`n`r`n" +
                     (& $Z "5q2M5ZCN77ya") + $probe.title + "`r`n" +
                     (& $Z "5q2M5omL77ya") + $probe.artist + "`r`n" +
                     (& $Z "5LiT6L6R77ya") + $probe.album + "`r`n" +
-                    (& $Z "5bm05Lu977ya") + $probe.year + "`r`n`r`n" +
+                    (& $Z "5bm05Lu977ya") + $probe.year + "`r`n" +
+                    (& $Z "5bCB6Z2i77ya") + $artworkStatus + "`r`n`r`n" +
                     (& $Z "6KaB57un57ut5a+85YWl5ZCX77yf")
             }
             else {

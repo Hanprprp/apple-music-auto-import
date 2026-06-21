@@ -8,11 +8,12 @@ It asks for the song title, original artist, whether the track is a live version
 
 - Select local audio files: `.m4a`, `.mp4`, `.aac`, `.mp3`, `.flac`, `.wav`
 - Chinese prompt flow for title, artist, live version, and cover version
-- iTunes metadata search first, Chinese music fallback search second
+- Better Chinese metadata matching through NetEase and Kuwo, with iTunes still used for high-confidence matches and artwork fallback
 - Handles bad download filenames such as `videoplayback.m4a`
 - Live mode: adds `(Live)` to title and uses a live single album name
 - Cover mode: keeps original song metadata but changes artist/album artist to the cover artist
 - Writes title, artist, album, album artist, year, genre, track/disc numbers, artwork, and available lyrics
+- Performs a second artwork pass when the first metadata result has no cover image
 - Imports through Apple Music's `Automatically Add to Apple Music` folder
 - Portable folder layout, with no hard-coded Windows username
 
@@ -92,7 +93,8 @@ The album becomes:
 The tool currently uses:
 
 - iTunes Search API
-- Chinese music fallback search
+- NetEase public search endpoint for Chinese metadata and artwork
+- Kuwo fallback search for Chinese metadata and artwork
 - MusicBrainz for extra credits when available
 - LRCLIB for plain lyrics when available
 
@@ -104,7 +106,6 @@ The tool writes normal lyrics when available. Apple Music local files do not rel
 
 ## Disclaimer
 
-This is an unofficial local automation tool. It is not affiliated with Apple, Apple Music, iTunes, MusicBrainz, LRCLIB, Kuwo, or any music platform.
+This is an unofficial local automation tool. It is not affiliated with Apple, Apple Music, iTunes, MusicBrainz, LRCLIB, NetEase, Kuwo, or any music platform.
 
 Use it only with audio files you have the right to use. Metadata and artwork are fetched from public endpoints where available, and availability/accuracy may vary.
-
