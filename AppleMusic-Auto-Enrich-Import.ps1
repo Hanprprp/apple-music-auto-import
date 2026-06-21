@@ -12,6 +12,11 @@ function Write-Log {
     Add-Content -LiteralPath $Script:LogFile -Value "[$stamp] $Text" -Encoding UTF8
 }
 
+function Decode-Utf8 {
+    param([string]$B64)
+    return [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($B64))
+}
+
 function Show-Message {
     param([string]$Text, [string]$Title = "Apple Music Auto Import")
     Add-Type -AssemblyName System.Windows.Forms | Out-Null
@@ -46,7 +51,7 @@ function Ask-TrackInfo {
 
     Add-Type -AssemblyName System.Windows.Forms | Out-Null
     Add-Type -AssemblyName System.Drawing | Out-Null
-    $D = { param([string]$B64) [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($B64)) }
+    $D = { param([string]$B64) Decode-Utf8 $B64 }
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = (& $D "5aGr5YaZ5q2M5puy5L+h5oGv")
@@ -163,6 +168,7 @@ function Ask-TrackInfo {
             YearText = $yearBox.Text.Trim()
             ExtraText = $extraBox.Text.Trim()
             IsLive = [bool]$liveBox.Checked
+            UseLiveLyrics = $false
             IsCover = [bool]$coverBox.Checked
             CoverArtist = $coverArtistBox.Text.Trim()
         }
@@ -524,6 +530,31 @@ urls = sys.argv[3:]
 download_root.mkdir(parents=True, exist_ok=True)
 downloaded = []
 errors = []
+records = []
+
+def compact_info(info):
+    if not info:
+        return {}
+    return {
+        "id": info.get("id") or "",
+        "title": info.get("title") or "",
+        "fulltitle": info.get("fulltitle") or "",
+        "alt_title": info.get("alt_title") or "",
+        "uploader": info.get("uploader") or "",
+        "channel": info.get("channel") or "",
+        "artist": info.get("artist") or "",
+        "track": info.get("track") or "",
+        "album": info.get("album") or "",
+        "release_year": info.get("release_year") or "",
+        "release_date": info.get("release_date") or "",
+        "upload_date": info.get("upload_date") or "",
+        "webpage_url": info.get("webpage_url") or "",
+        "description": (info.get("description") or "")[:20000],
+    }
+
+def write_sidecar(path, info):
+    sidecar = Path(str(path) + ".aminfo.json")
+    sidecar.write_text(json.dumps(compact_info(info), ensure_ascii=False, indent=2), encoding="utf-8")
 
 for url in urls:
     before = {p.resolve() for p in download_root.glob("*") if p.is_file()}
@@ -545,12 +576,18 @@ for url in urls:
             for item in requested:
                 filepath = item.get("filepath")
                 if filepath and Path(filepath).exists():
-                    downloaded.append(str(Path(filepath).resolve()))
+                    resolved = str(Path(filepath).resolve())
+                    downloaded.append(resolved)
+                    write_sidecar(resolved, info)
+                    records.append({"file": resolved, "info": compact_info(info)})
             if not requested:
                 after = {p.resolve() for p in download_root.glob("*") if p.is_file()}
                 new_files = sorted(after - before, key=lambda p: p.stat().st_mtime, reverse=True)
                 if new_files:
-                    downloaded.append(str(new_files[0]))
+                    resolved = str(new_files[0])
+                    downloaded.append(resolved)
+                    write_sidecar(resolved, info)
+                    records.append({"file": resolved, "info": compact_info(info)})
     except Exception as exc:
         errors.append(f"{url}: {exc}")
 
@@ -561,7 +598,7 @@ for path in downloaded:
         seen.add(path)
         unique.append(path)
 
-result_file.write_text(json.dumps({"files": unique, "errors": errors}, ensure_ascii=True), encoding="utf-8")
+result_file.write_text(json.dumps({"files": unique, "records": records, "errors": errors}, ensure_ascii=True), encoding="utf-8")
 if errors and not unique:
     sys.exit(1)
 '@
@@ -588,6 +625,233 @@ if errors and not unique:
     finally {
         Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Get-FirstRegexGroup {
+    param([string]$Text, [string[]]$Patterns)
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return ""
+    }
+    foreach ($pattern in $Patterns) {
+        $m = [regex]::Match($Text, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Multiline)
+        if ($m.Success -and $m.Groups.Count -gt 1) {
+            $value = $m.Groups[1].Value.Trim()
+            if (-not [string]::IsNullOrWhiteSpace($value)) {
+                $fullWidthColon = [string][char]0xFF1A
+                return ($value -replace '[\r\n]+.*$', '').Trim((" `t-:" + $fullWidthColon + "|"))
+            }
+        }
+    }
+    return ""
+}
+
+function Clean-VideoMetaText {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return ""
+    }
+    $text = $Text -replace 'https?://\S+', ' '
+    $text = $text -replace '#\S+', ' '
+    $text = $text -replace '\s+', ' '
+    return $text.Trim()
+}
+
+function Get-TextBetweenChars {
+    param(
+        [string]$Text,
+        [int]$LeftCode,
+        [int]$RightCode
+    )
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return ""
+    }
+    $left = [string][char]$LeftCode
+    $right = [string][char]$RightCode
+    $start = $Text.IndexOf($left)
+    if ($start -lt 0) {
+        return ""
+    }
+    $end = $Text.IndexOf($right, $start + 1)
+    if ($end -le $start) {
+        return ""
+    }
+    return $Text.Substring($start + 1, $end - $start - 1).Trim()
+}
+
+function Remove-LeadingBracketNote {
+    param([string]$Text)
+    $value = [string]$Text
+    $leftBookBracket = [string][char]0x3010
+    $rightBookBracket = [string][char]0x3011
+    $changed = $true
+    while ($changed) {
+        $changed = $false
+        $next = ($value -replace '^\s*\[[^\]]*\]\s*', '').TrimStart()
+        if ($next -ne $value) {
+            $value = $next
+            $changed = $true
+        }
+        if ($value.StartsWith($leftBookBracket) -and $value.Contains($rightBookBracket)) {
+            $end = $value.IndexOf($rightBookBracket)
+            if ($end -ge 0) {
+                $value = $value.Substring($end + 1).TrimStart()
+                $changed = $true
+            }
+        }
+    }
+    return $value
+}
+
+function Clean-VideoTitleForSongName {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return ""
+    }
+    $value = Clean-VideoMetaText $Text
+    $bookTitle = Get-TextBetweenChars $value 0x300A 0x300B
+    if (-not [string]::IsNullOrWhiteSpace($bookTitle)) {
+        return ($bookTitle -replace '\s+', ' ').Trim()
+    }
+    $value = Remove-LeadingBracketNote $value
+    $value = $value -replace '\s*\[[A-Za-z0-9_-]{6,}\]\s*$', ''
+    $value = $value -replace '(?i)\b(4k|8k|hd|hq|mv|live|cover|official|audio|video)\b', ' '
+    $value = $value -replace '\u9ad8\u6e05|\u4fee\u5fa9|\u4fee\u590d|\u5b98\u651d|\u5b98\u6444|\u73fe\u5834\u7248|\u73b0\u573a\u7248|\u73fe\u5834|\u73b0\u573a|\u6f14\u5531\u6703|\u6f14\u5531\u4f1a|\u53f2\u4e0a\u6700\u5f37|\u53f2\u4e0a\u6700\u5f3a', ' '
+    $value = $value -replace '\s+', ' '
+    return $value.Trim(" `t-_")
+}
+
+function Infer-ArtistFromTitle {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return ""
+    }
+    $prefix = ""
+    $leftTitle = [string][char]0x300A
+    $rightTitle = [string][char]0x300B
+    $titleStart = $Text.IndexOf($leftTitle)
+    $titleEnd = if ($titleStart -ge 0) { $Text.IndexOf($rightTitle, $titleStart + 1) } else { -1 }
+    if ($titleStart -ge 0 -and $titleEnd -gt $titleStart) {
+        $prefix = $Text.Substring(0, $titleStart)
+    }
+    else {
+        $parts = [regex]::Split($Text, '\s+-\s+| - |--|\|')
+        if ($parts.Count -ge 2) {
+            $prefix = $parts[0]
+        }
+    }
+    $leftBookBracket = [string][char]0x3010
+    $rightBookBracket = [string][char]0x3011
+    $leftFullParen = [string][char]0xFF08
+    $rightFullParen = [string][char]0xFF09
+    $fullWidthColon = [string][char]0xFF1A
+    $prefix = Remove-LeadingBracketNote $prefix
+    $prefix = $prefix -replace '(?i)\b(4k|hd|hq|mv|live|cover|official|audio|video)\b', ''
+    $prefix = $prefix -replace '\u9ad8\u6e05|\u4fee\u5fa9|\u4fee\u590d|\u5b98\u651d|\u5b98\u6444', ''
+    $prefix = $prefix -replace '[\[\]\(\)]', ' '
+    $prefix = $prefix.Replace($leftBookBracket, " ").Replace($rightBookBracket, " ").Replace($leftFullParen, " ").Replace($rightFullParen, " ")
+    $prefix = ($prefix -replace '\s+', ' ').Trim((" `t-:" + $fullWidthColon + "|"))
+    if ($prefix.Length -gt 0 -and $prefix.Length -le 30) {
+        return $prefix
+    }
+    return ""
+}
+
+function Get-TrackDefaultsFromVideoInfo {
+    param([string]$AudioFile)
+
+    $defaults = [PSCustomObject]@{
+        Title = ""
+        Artist = ""
+        Album = ""
+        Year = ""
+        Extra = ""
+    }
+
+    $sidecar = "$AudioFile.aminfo.json"
+    if (-not (Test-Path -LiteralPath $sidecar)) {
+        return $defaults
+    }
+
+    try {
+        $info = Get-Content -LiteralPath $sidecar -Raw -Encoding UTF8 | ConvertFrom-Json
+    }
+    catch {
+        return $defaults
+    }
+
+    $titleText = Clean-VideoMetaText (($info.title, $info.fulltitle, $info.alt_title) -join "`n")
+    $description = [string]($info.description)
+    $combined = (($info.title, $info.fulltitle, $info.alt_title, $description) -join "`n")
+
+    $title = Get-TextBetweenChars $combined 0x300A 0x300B
+    if ([string]::IsNullOrWhiteSpace($title)) {
+        $title = Get-TextBetweenChars $combined 0x003C 0x003E
+    }
+    if ([string]::IsNullOrWhiteSpace($title)) {
+        $title = Get-FirstRegexGroup $combined @(
+            '^\s*(?:\u6b4c\u540d|\u66f2\u540d|\u6b4c\u66f2|\u66f2\u76ee|title|song)\s*[:\uFF1A\-]\s*(.+)$',
+            '^\s*(?:track)\s*[:\uFF1A\-]\s*(.+)$'
+        )
+    }
+    if ([string]::IsNullOrWhiteSpace($title) -and -not [string]::IsNullOrWhiteSpace($info.track)) {
+        $title = [string]$info.track
+    }
+    if ([string]::IsNullOrWhiteSpace($title)) {
+        $title = Clean-VideoTitleForSongName $titleText
+    }
+
+    $artist = Get-FirstRegexGroup $combined @(
+        '^\s*(?:\u6b4c\u624b|\u6f14\u5531|\u6f14\u5531\u8005|\u539f\u5531|artist|singer|vocal)\s*[:\uFF1A\-]\s*(.+)$',
+        '^\s*(?:performer|performed by)\s*[:\uFF1A\-]\s*(.+)$'
+    )
+    if ([string]::IsNullOrWhiteSpace($artist) -and -not [string]::IsNullOrWhiteSpace($info.artist)) {
+        $artist = [string]$info.artist
+    }
+    if ([string]::IsNullOrWhiteSpace($artist)) {
+        $artist = Infer-ArtistFromTitle $titleText
+    }
+    if ([string]::IsNullOrWhiteSpace($artist) -and ([string]$info.channel) -match '(?i)(topic|official|vevo|\u5b98\u65b9)') {
+        $artist = ([string]$info.channel) -replace '(?i)\s*-\s*topic$', ''
+        $artist = $artist -replace '(?i)\s*official.*$', ''
+        $artist = $artist.Trim()
+    }
+
+    $album = Get-FirstRegexGroup $combined @('^\s*(?:\u4e13\u8f91|\u5c08\u8f2f|album)\s*[:\uFF1A\-]\s*(.+)$')
+    if ([string]::IsNullOrWhiteSpace($album) -and -not [string]::IsNullOrWhiteSpace($info.album)) {
+        $album = [string]$info.album
+    }
+
+    $year = ""
+    if ($info.release_year) {
+        $year = [string]$info.release_year
+    }
+    elseif ($info.release_date -and ([string]$info.release_date) -match '^(19|20)\d{2}') {
+        $year = $matches[0]
+    }
+    if ([string]::IsNullOrWhiteSpace($year)) {
+        $year = Get-FirstRegexGroup $combined @('^\s*(?:\u5e74\u4efd|\u53d1\u884c|\u767c\u884c|year|release(?: date)?)\s*[:\uFF1A\-]\s*((?:19|20)\d{2})')
+    }
+
+    $extraLines = New-Object System.Collections.Generic.List[string]
+    if ($info.title) { $extraLines.Add((Decode-Utf8 "6KeG6aKR5qCH6aKYOiA=") + $info.title) }
+    if ($info.channel) { $extraLines.Add((Decode-Utf8 "6aKR6YGTOiA=") + $info.channel) }
+    if ($info.uploader -and $info.uploader -ne $info.channel) { $extraLines.Add((Decode-Utf8 "5LiK5Lyg6ICFOiA=") + $info.uploader) }
+    $lyricist = Get-FirstRegexGroup $combined @('^\s*(?:\u4f5c\u8bcd|\u586b\u8bcd|\u8a5e|lyricist|lyrics by)\s*[:\uFF1A\-]\s*(.+)$')
+    $composer = Get-FirstRegexGroup $combined @('^\s*(?:\u4f5c\u66f2|\u66f2|composer|music by)\s*[:\uFF1A\-]\s*(.+)$')
+    if ($lyricist) { $extraLines.Add((Decode-Utf8 "5aGr6K+NOiA=") + $lyricist) }
+    if ($composer) { $extraLines.Add((Decode-Utf8 "5L2c5puyOiA=") + $composer) }
+    if ($description) {
+        $desc = $description.Trim()
+        if ($desc.Length -gt 1800) { $desc = $desc.Substring(0, 1800) }
+        $extraLines.Add((Decode-Utf8 "566A5LuLOiA=") + $desc)
+    }
+
+    $defaults.Title = $title
+    $defaults.Artist = $artist
+    $defaults.Album = $album
+    $defaults.Year = $year
+    $defaults.Extra = ($extraLines -join "`r`n")
+    return $defaults
 }
 
 $processor = @'
@@ -652,6 +916,23 @@ def extract_book_title(text):
         return m.group(1).strip()
     return ""
 
+def extract_labeled_value(text, labels):
+    if not text:
+        return ""
+    label_re = "|".join(re.escape(label) for label in labels)
+    pattern = rf"(?im)^\s*(?:{label_re})\s*[:\uFF1A\-]\s*(.+?)\s*$"
+    m = re.search(pattern, text)
+    if m and m.group(1).strip():
+        return m.group(1).strip()
+    return ""
+
+def trim_hint_fragment(text):
+    text = (text or "").strip()
+    text = re.split(r"(?i)\b(?:\u89c6\u9891\u6807\u9898|\u983b\u9053|\u9891\u9053|\u4e0a\u4f20\u8005|\u4e0a\u50b3\u8005|\u7b80\u4ecb|\u7c21\u4ecb|description|album|\u4e13\u8f91|\u5c08\u8f2f|year|\u5e74\u4efd)\s*[:\uFF1A]", text, maxsplit=1)[0]
+    text = re.sub(r"\[[A-Za-z0-9_-]{6,}\]\s*$", "", text)
+    text = re.sub(r"\s+", " ", text).strip(" -_")
+    return text
+
 def extract_artist_near_book_title(text):
     text = (text or "").strip()
     if not text:
@@ -662,7 +943,7 @@ def extract_artist_near_book_title(text):
     before = re.split(r"[\u300a<]", text, maxsplit=1)[0]
     before = re.sub(r"^\s*[\u3010\[].*?[\u3011\]]\s*", "", before)
     before = re.sub(r"\b(4k|hd|hq|live|cover)\b", "", before, flags=re.I)
-    before = re.sub(r"[\[\]\(\)（）【】]+", " ", before)
+    before = re.sub(r"[\[\]\(\)\uFF08\uFF09\u3010\u3011]+", " ", before)
     before = re.sub(r"\s+", " ", before).strip(" -_")
     if before and len(norm(before)) <= 30:
         return before
@@ -670,6 +951,9 @@ def extract_artist_near_book_title(text):
 
 def norm(text):
     return re.sub(r"[\W_]+", "", (text or "").lower(), flags=re.UNICODE)
+
+def strip_live_marker(text):
+    return re.sub(r"\s*\(?\s*(live|\u73fe\u5834|\u73b0\u573a)\s*\)?\s*$", "", text or "", flags=re.I).strip()
 
 def has_cjk(text):
     return bool(re.search(r"[\u3400-\u9fff]", text or ""))
@@ -721,19 +1005,29 @@ def weak_title(text):
 def parse_candidates(source, hint):
     base = clean_name(source)
     hint = (hint or "").strip()
-    book_title = extract_book_title(Path(source).stem) or extract_book_title(hint)
-    book_artist = extract_artist_near_book_title(hint) or extract_artist_near_book_title(Path(source).stem)
+    labeled_title = extract_labeled_value(hint, ["\u6b4c\u540d", "\u66f2\u540d", "\u6b4c\u66f2", "\u66f2\u76ee", "title", "song", "track"])
+    labeled_artist = extract_labeled_value(hint, ["\u6b4c\u624b", "\u6f14\u5531", "\u6f14\u5531\u8005", "\u539f\u5531", "artist", "singer", "vocal", "performer"])
+    book_title = labeled_title or extract_book_title(Path(source).stem) or extract_book_title(hint)
+    book_artist = labeled_artist or extract_artist_near_book_title(hint) or extract_artist_near_book_title(Path(source).stem)
     candidates = []
+    if labeled_title or labeled_artist:
+        candidates.append({"artist": labeled_artist, "title": labeled_title or book_title, "query": f"{labeled_artist} {labeled_title or book_title}".strip()})
     if book_title:
         if book_artist:
             candidates.append({"artist": book_artist, "title": book_title, "query": f"{book_artist} {book_title}"})
         candidates.append({"artist": "", "title": book_title, "query": f"{hint} {book_title}"})
     if hint:
-        candidates.append({"artist": "", "title": hint, "query": hint})
+        if len(norm(hint)) <= 80:
+            candidates.append({"artist": "", "title": hint, "query": hint})
+        else:
+            candidates.append({"artist": "", "title": "", "query": hint})
         parts = [p.strip() for p in re.split(r"\s+-\s+| - |-|--|/", hint, maxsplit=1) if p.strip()]
         if len(parts) == 2:
-            candidates.append({"artist": parts[0], "title": parts[1], "query": hint})
-            candidates.append({"artist": parts[1], "title": parts[0], "query": hint})
+            left = trim_hint_fragment(parts[0])
+            right = trim_hint_fragment(parts[1])
+            candidates.append({"artist": left, "title": right, "query": f"{left} {right}".strip()})
+            if len(norm(left)) <= 40 and len(norm(right)) <= 80:
+                candidates.append({"artist": right, "title": left, "query": f"{right} {left}".strip()})
         space_parts = [p.strip() for p in hint.split() if p.strip()]
         if len(space_parts) >= 2:
             candidates.append({"artist": space_parts[0], "title": " ".join(space_parts[1:]), "query": hint})
@@ -751,14 +1045,52 @@ def parse_candidates(source, hint):
     if not weak_title(base):
         candidates.append({"title": base, "artist": "", "query": base})
 
+    expanded = []
+    for item in candidates:
+        expanded.append(item)
+        alias = dict(item)
+        changed = False
+        for key in ("title", "query"):
+            value = alias.get(key) or ""
+            replaced = value.replace("\u5341\u70b9\u534a", "10:30").replace("\u5341\u9ede\u534a", "10:30")
+            if replaced != value:
+                alias[key] = replaced
+                changed = True
+        if changed:
+            expanded.append(alias)
+
     seen = set()
     unique = []
-    for item in candidates:
+    for item in expanded:
         key = (item.get("title", ""), item.get("artist", ""), item.get("query", ""))
         if key not in seen:
             seen.add(key)
             unique.append(item)
     return unique
+
+def with_live_search_variants(candidates):
+    out = list(candidates)
+    for item in candidates:
+        query = (item.get("query") or item.get("title") or "").strip()
+        if not query:
+            continue
+        if not re.search(r"(?i)\blive\b|\u73fe\u5834|\u73b0\u573a|\u6f14\u5531\u6703|\u6f14\u5531\u4f1a", query):
+            clone = dict(item)
+            clone["query"] = query + " live"
+            out.append(clone)
+    seen = set()
+    unique = []
+    for item in out:
+        key = (item.get("title", ""), item.get("artist", ""), item.get("query", ""))
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    unique.sort(key=lambda item: (
+        0 if item.get("artist") and item.get("title") else 1,
+        0 if is_live_context("", item.get("query") or "") else 1,
+        len(item.get("query") or item.get("title") or ""),
+    ))
+    return unique[:12]
 
 def known_override(candidates):
     combined = " ".join(
@@ -805,9 +1137,11 @@ def search_itunes(candidates):
     best = None
     for cand in candidates:
         terms = []
+        cand_wants_live = is_live_context("", cand.get("query") or "")
         if cand.get("title") and cand.get("artist"):
-            terms.append(f"{cand['title']} {cand['artist']}")
-            terms.append(f"{cand['artist']} {cand['title']}")
+            live_suffix = " live" if cand_wants_live else ""
+            terms.append(f"{cand['title']} {cand['artist']}{live_suffix}")
+            terms.append(f"{cand['artist']} {cand['title']}{live_suffix}")
         terms.append(cand.get("query") or cand.get("title") or "")
         for term in [t for t in terms if t.strip()]:
             for country in countries:
@@ -820,7 +1154,10 @@ def search_itunes(candidates):
                 for result in data.get("results", []):
                     if not matches_any_explicit_artist(explicit_artists, result.get("artistName")):
                         continue
-                    title_score = ratio(cand.get("title") or term, result.get("trackName"))
+                    title_score = max(
+                        ratio(cand.get("title") or term, result.get("trackName")),
+                        ratio(cand.get("title") or term, strip_live_marker(result.get("trackName") or "")),
+                    )
                     artist_score = ratio(cand.get("artist"), result.get("artistName")) if cand.get("artist") else 0.35
                     if cand.get("artist") and not artist_matches(cand.get("artist"), result.get("artistName")):
                         continue
@@ -829,9 +1166,21 @@ def search_itunes(candidates):
                         score += 0.15
                     if norm(cand.get("artist")) and norm(cand.get("artist")) == norm(result.get("artistName")):
                         score += 0.15
+                    if is_live_context("", term):
+                        result_live_text = " ".join([result.get("trackName") or "", result.get("collectionName") or ""])
+                        if is_live_context("", result_live_text):
+                            score += 0.35
+                        else:
+                            score -= 0.25
                     item = {"score": round(score, 4), "country": country, "data": result}
                     if best is None or item["score"] > best["score"]:
                         best = item
+                if best and best["score"] >= 1.25:
+                    break
+            if best and best["score"] >= 1.25:
+                break
+        if best and best["score"] >= 1.25:
+            break
     if not best or best["score"] < 0.55:
         return None
     r = best["data"]
@@ -934,26 +1283,95 @@ def search_musicbrainz(meta):
         out["lyricist"] = ", ".join(sorted(lyricists))
     return out
 
-def find_lyrics(meta):
+def base_lyric_title(title):
+    title = title or ""
+    title = re.sub(r"\s*\([^)]*(?:live|\u73fe\u5834|\u73b0\u573a|\u53f0\u5317|\u9999\u6e2f|soul\s*power)[^)]*\)\s*$", "", title, flags=re.I)
+    title = re.sub(r"\s+", " ", title).strip()
+    return title
+
+def lyric_title_aliases(title):
+    base = base_lyric_title(title)
+    aliases = []
+    for value in (
+        base,
+        base.replace("\u5341\u70b9\u534a", "10:30").replace("\u5341\u9ede\u534a", "10:30"),
+        base.replace("10:30", "\u5341\u70b9\u534a"),
+        base.replace("10:30", "\u5341\u9ede\u534a"),
+    ):
+        value = value.strip()
+        if value and value not in aliases:
+            aliases.append(value)
+    return aliases
+
+def clean_lyric_text(text):
+    lines = []
+    for raw in (text or "").splitlines():
+        line = re.sub(r"^\[[0-9:.]+\]\s*", "", raw).strip()
+        line = re.sub(r"\s+", " ", line)
+        line = re.sub(r"(?i)\boh\s+yeh\b", "Oh yeah", line)
+        line = re.sub(r"(?i)\byeh\b", "yeah", line)
+        if line.lower() == "for my baby":
+            line = "For my baby"
+        if not line:
+            continue
+        if re.match(r"^(?:\u4f5c\u8bcd|\u4f5c\u8a5e|\u586b\u8bcd|\u586b\u8a5e|\u4f5c\u66f2|\u7f16\u66f2|\u7de8\u66f2|\u5236\u4f5c\u4eba|\u8bcd|\u8a5e|\u66f2)\s*[:\uff1a]", line):
+            continue
+        if lines and norm(lines[-1]) == norm(line):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+def lyrics_match_title(title, lyrics):
+    title_n = norm(base_lyric_title(title))
+    lyrics_n = norm(lyrics)
+    if not title_n or not lyrics_n:
+        return True
+    if "1030" in title_n:
+        if not any(token in lyrics_n for token in ("1030", "\u5341\u70b9\u534a", "\u5341\u9ede\u534a")):
+            return False
+    title_chars = [
+        ch for ch in base_lyric_title(title)
+        if re.match(r"[\u3400-\u9fff]", ch) and ch not in "\u7684\u4e86\u6211\u4f60\u4ed6\u5979\u5b83\u662f\u6709\u5728\u4e0d\u4e00\u548c"
+    ]
+    if len(title_chars) >= 2:
+        matched = sum(1 for ch in set(title_chars) if ch in lyrics)
+        if matched < 2:
+            return False
+    return True
+
+def usable_lyrics(text, title=""):
+    cleaned = clean_lyric_text(text)
+    if not cleaned:
+        return ""
+    if title and not lyrics_match_title(title, cleaned):
+        return ""
+    lines = lyric_lines(cleaned)
+    cjk_chars = len(re.findall(r"[\u3400-\u9fff]", cleaned))
+    if len(lines) < 5 or cjk_chars < 20:
+        return ""
+    return cleaned
+
+def search_lrclib_lyrics(meta):
     title = meta.get("title") or ""
     artist = meta.get("artist") or ""
     if not title:
         return ""
-    params = {"track_name": title}
-    if artist:
-        params["artist_name"] = artist
-    if meta.get("album"):
-        params["album_name"] = meta["album"]
-    url = "https://lrclib.net/api/search?" + urllib.parse.urlencode(params)
-    try:
-        data = http_json(url)
-    except Exception:
-        return ""
-    if not isinstance(data, list):
-        return ""
+    all_results = []
+    for alias in lyric_title_aliases(title):
+        params = {"track_name": alias}
+        if artist:
+            params["artist_name"] = artist
+        url = "https://lrclib.net/api/search?" + urllib.parse.urlencode(params)
+        try:
+            data = http_json(url)
+        except Exception:
+            continue
+        if isinstance(data, list):
+            all_results.extend(data[:10])
     best = None
-    for item in data[:10]:
-        score = ratio(title, item.get("trackName")) * 0.65 + ratio(artist, item.get("artistName")) * 0.35
+    for item in all_results:
+        score = max(ratio(alias, item.get("trackName")) for alias in lyric_title_aliases(title)) * 0.65
+        score += ratio(artist, item.get("artistName")) * 0.35
         if meta.get("album"):
             score += ratio(meta.get("album"), item.get("albumName")) * 0.1
         if best is None or score > best[0]:
@@ -968,20 +1386,226 @@ def find_lyrics(meta):
             if line:
                 lines.append(line)
         lyrics = "\n".join(lines)
-    return lyrics.strip()
+    return usable_lyrics(lyrics, title)
+
+def fetch_netease_lyrics(song_id, title=""):
+    try:
+        req = urllib.request.Request(
+            f"https://music.163.com/api/song/lyric?id={song_id}&lv=1&kv=1&tv=-1",
+            headers={"User-Agent": USER_AGENT, "Referer": "https://music.163.com/"},
+        )
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            payload = json.loads(resp.read().decode("utf-8", "replace"))
+    except Exception:
+        return ""
+    lyric = (payload.get("lrc") or {}).get("lyric") or ""
+    return usable_lyrics(lyric, title)
+
+def search_netease_lyrics(meta, prefer_live=False):
+    title = meta.get("title") or ""
+    artist = meta.get("artist") or ""
+    if not title:
+        return ""
+    search_terms = []
+    for alias in lyric_title_aliases(title):
+        for term in (
+            f"{artist} {alias} Power Of Live",
+            f"{artist} {alias} Soul Power Live",
+            f"{artist} {alias} live",
+            f"{artist} {alias}",
+            f"David Tao {alias}",
+        ):
+            term = term.strip()
+            if term and term not in search_terms:
+                search_terms.append(term)
+
+    best = []
+    for term in search_terms[:8]:
+        data = urllib.parse.urlencode({"s": term, "type": 1, "offset": 0, "total": "true", "limit": 10}).encode("utf-8")
+        try:
+            req = urllib.request.Request(
+                "https://music.163.com/api/search/get",
+                data=data,
+                headers={"User-Agent": USER_AGENT, "Referer": "https://music.163.com/"},
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                payload = json.loads(resp.read().decode("utf-8", "replace"))
+        except Exception:
+            continue
+        for song in (payload.get("result") or {}).get("songs", []):
+            song_id = song.get("id")
+            song_title = song.get("name") or ""
+            artists = " ".join(a.get("name", "") for a in song.get("artists", []) if isinstance(a, dict))
+            album = (song.get("album") or {}).get("name") or ""
+            if not song_id or artist and not artist_matches(artist, artists):
+                continue
+            title_score = max(ratio(alias, song_title) for alias in lyric_title_aliases(title))
+            score = title_score * 0.68 + (ratio(artist, artists) if artist else 0.35) * 0.32
+            song_context = " ".join([song_title, album, term])
+            if is_live_context("", song_context):
+                score += 0.35 if prefer_live else 0.12
+            elif prefer_live:
+                score -= 0.18
+            if prefer_live and re.search(r"(?i)power\s*of\s*live|soul\s*power|live|concert|\u73fe\u5834|\u73b0\u573a|\u6f14\u5531\u6703|\u6f14\u5531\u4f1a", song_context):
+                score += 0.12
+            best.append((score, song_id, song_title, album))
+    best.sort(reverse=True, key=lambda item: item[0])
+    fallback = ""
+    for score, song_id, song_title, album in best[:10]:
+        if score < 0.48:
+            continue
+        lyrics = fetch_netease_lyrics(song_id, title)
+        if lyrics:
+            if prefer_live and re.search(r"\u73b0\u5728\u7684\u65f6\u95f4|\u73fe\u5728\u7684\u6642\u9593", lyrics) and re.search(r"\u8fd8\u6ca1\u6709|\u9084\u6c92\u6709", lyrics):
+                return lyrics
+            if not fallback:
+                fallback = lyrics
+            if not prefer_live:
+                return lyrics
+    if fallback:
+        return fallback
+    for score, song_id, song_title, album in best[:10]:
+        if score < 0.48:
+            continue
+        lyrics = fetch_netease_lyrics(song_id, title)
+        if lyrics:
+            return lyrics
+    return ""
+
+def find_lyrics(meta, prefer_live=False):
+    title = meta.get("title") or ""
+    artist = meta.get("artist") or ""
+    if has_cjk(title) or has_cjk(artist):
+        lyrics = search_netease_lyrics(meta, prefer_live=prefer_live)
+        if lyrics:
+            return lyrics
+        return search_lrclib_lyrics(meta)
+    lyrics = search_lrclib_lyrics(meta)
+    if lyrics:
+        return lyrics
+    return search_netease_lyrics(meta, prefer_live=prefer_live)
+
+def extract_hint_credits(hint):
+    out = {}
+    lyricist = extract_labeled_value(hint, ["\u4f5c\u8bcd", "\u586b\u8bcd", "\u8a5e", "\u8bcd", "lyricist", "lyrics by"])
+    composer = extract_labeled_value(hint, ["\u4f5c\u66f2", "\u66f2", "composer", "music by", "written by"])
+    album = extract_labeled_value(hint, ["\u4e13\u8f91", "\u5c08\u8f2f", "album"])
+    year = extract_labeled_value(hint, ["\u5e74\u4efd", "\u53d1\u884c", "\u767c\u884c", "year", "release"])
+    if lyricist:
+        out["lyricist"] = lyricist
+    if composer:
+        out["composer"] = composer
+    if album:
+        out["album"] = album
+    year_match = re.search(r"(19|20)\d{2}", year or "")
+    if year_match:
+        out["year"] = year_match.group(0)
+        out["release_date"] = year_match.group(0)
+    return out
+
+def lyric_lines(text):
+    out = []
+    for raw in (text or "").splitlines():
+        line = re.sub(r"\[[0-9:.]+\]", "", raw).strip()
+        line = re.sub(r"\s+", " ", line)
+        if line:
+            out.append(line)
+    return out
+
+def load_video_sidecar(source):
+    sidecar = Path(str(source) + ".aminfo.json")
+    if not sidecar.exists():
+        return {}
+    try:
+        return json.loads(sidecar.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def local_live_details(source, hint):
+    info = load_video_sidecar(source)
+    context = "\n".join(
+        str(part or "")
+        for part in (
+            Path(source).stem,
+            hint,
+            info.get("id"),
+            info.get("title"),
+            info.get("fulltitle"),
+            info.get("description"),
+            info.get("webpage_url"),
+        )
+    )
+    details = {"venue": "", "event": "", "year": ""}
+    video_id = (info.get("id") or "").strip()
+    known = {
+        "3dW6r8tByOA": {"venue": "\u53f0\u5317"},
+    }
+    if video_id in known:
+        details.update(known[video_id])
+
+    if not details["venue"]:
+        venues = [
+            ("\u53f0\u5317", r"\u53f0\u5317|\u81fa\u5317|taipei"),
+            ("\u9999\u6e2f", r"\u9999\u6e2f|hong\s*kong|hk\b"),
+            ("\u5317\u4eac", r"\u5317\u4eac|beijing"),
+            ("\u4e0a\u6d77", r"\u4e0a\u6d77|shanghai"),
+            ("\u5e7f\u5dde", r"\u5e7f\u5dde|\u5ee3\u5dde|guangzhou"),
+            ("\u6df1\u5733", r"\u6df1\u5733|shenzhen"),
+            ("\u65b0\u52a0\u5761", r"\u65b0\u52a0\u5761|singapore"),
+            ("\u9a6c\u6765\u897f\u4e9a", r"\u9a6c\u6765\u897f\u4e9a|\u99ac\u4f86\u897f\u4e9e|malaysia"),
+        ]
+        for name, pattern in venues:
+            if re.search(pattern, context, flags=re.I):
+                details["venue"] = name
+                break
+
+    if re.search(r"(?i)soul\s*power\s*(ii|2)|Soul\s*Power\s*II", context):
+        details["event"] = "Soul Power II"
+    elif re.search(r"(?i)soul\s*power", context):
+        details["event"] = "Soul Power"
+
+    year_match = re.search(r"(?<!\d)((?:19|20)\d{2})(?!\d)", context)
+    if year_match:
+        details["year"] = year_match.group(1)
+    return details
+
+def local_live_label(details):
+    parts = []
+    if details.get("event"):
+        parts.append(details["event"])
+    if details.get("venue"):
+        parts.append(details["venue"])
+    return " ".join(parts).strip()
 
 def apply_live_adjustment(meta, source, hint):
     if not is_live_context(source, hint):
         return meta
     title = meta.get("title") or clean_name(source)
     title = re.sub(r"\s*\((live|\u73fe\u5834|\u73b0\u573a)\)\s*$", "", title, flags=re.I)
-    meta["title"] = f"{title} (Live)"
-    if "cover version" not in (meta.get("source") or ""):
-        meta["album"] = f"{title} (Live) - Single"
+    details = local_live_details(source, hint)
+    label = local_live_label(details)
+    if label:
+        meta["title"] = f"{title} ({label} Live)"
+        album_label = f"{label} Live"
+    else:
+        meta["title"] = f"{title} (Live)"
+        album_label = "Local Live"
+    if "cover version" in (meta.get("source") or ""):
+        meta["album"] = f"{title} ({album_label} Cover) - Single"
+    else:
+        meta["album"] = f"{title} ({album_label}) - Single"
+    if details.get("year"):
+        meta["year"] = details["year"]
+        meta["release_date"] = details["year"]
+    elif meta.get("year"):
+        meta["release_date"] = meta["year"]
+    elif meta.get("release_date"):
+        meta["year"] = str(meta["release_date"])[:4]
+        meta["release_date"] = meta["year"]
     meta["track_number"] = 1
     meta["track_count"] = 1
     old_source = meta.get("source") or ""
-    meta["source"] = (old_source + "; adjusted as local live recording").strip("; ")
+    meta["source"] = (old_source + "; kept as distinct local live recording").strip("; ")
     return meta
 
 def clean_provider_text(text):
@@ -1435,16 +2059,27 @@ def main():
     source, hint, auto_add = sys.argv[1:4]
     force_live = len(sys.argv) > 4 and sys.argv[4] == "--force-live"
     force_studio = len(sys.argv) > 4 and sys.argv[4] == "--force-studio"
-    cover_artist = sys.argv[5].strip() if len(sys.argv) > 5 else ""
+    optional_args = sys.argv[5:]
+    cover_artist = ""
+    for arg in optional_args:
+        arg = (arg or "").strip()
+        if not arg or arg.startswith("--") or arg == "__NO_COVER_ARTIST__":
+            continue
+        cover_artist = arg
+        break
     live_hint = hint
     if force_live:
         live_hint = hint + " __force_live__"
     elif force_studio:
         live_hint = hint + " __force_studio__"
     candidates = parse_candidates(source, hint)
+    if force_live:
+        candidates = with_live_search_variants(candidates)
     override_meta = known_override(candidates)
     if override_meta:
         meta = override_meta
+    elif force_live:
+        meta = search_itunes(candidates) or search_netease(candidates) or search_kuwo(candidates)
     elif candidates_have_cjk(candidates):
         meta = search_netease(candidates) or search_kuwo(candidates) or search_itunes(candidates)
     else:
@@ -1496,7 +2131,11 @@ def main():
 
     mb = search_musicbrainz(meta)
     meta.update({k: v for k, v in mb.items() if v})
-    lyrics = find_lyrics(meta)
+    hint_credits = extract_hint_credits(hint)
+    for key, value in hint_credits.items():
+        if value and not meta.get(key):
+            meta[key] = value
+    lyrics = find_lyrics(meta, prefer_live=is_live_context(source, live_hint))
     if lyrics:
         meta["lyrics"] = lyrics
     meta = apply_live_adjustment(meta, source, live_hint)
@@ -1581,7 +2220,18 @@ try {
         }
         $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file)
         $Z = { param([string]$B64) [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($B64)) }
-        $trackInfo = Ask-TrackInfo -FileName ([System.IO.Path]::GetFileName($file)) -DefaultSongTitle $baseName
+        $videoDefaults = Get-TrackDefaultsFromVideoInfo -AudioFile $file
+        $defaultSongTitle = $baseName
+        if (-not [string]::IsNullOrWhiteSpace($videoDefaults.Title)) {
+            $defaultSongTitle = $videoDefaults.Title
+        }
+        $trackInfo = Ask-TrackInfo `
+            -FileName ([System.IO.Path]::GetFileName($file)) `
+            -DefaultSongTitle $defaultSongTitle `
+            -DefaultArtist $videoDefaults.Artist `
+            -DefaultAlbum $videoDefaults.Album `
+            -DefaultYear $videoDefaults.Year `
+            -DefaultExtra $videoDefaults.Extra
         if ($trackInfo.Cancelled) {
             continue
         }
@@ -1592,6 +2242,7 @@ try {
         $yearText = $trackInfo.YearText
         $extraText = $trackInfo.ExtraText
         $isLive = [bool]$trackInfo.IsLive
+        $useLiveLyrics = $false
         $isCover = [bool]$trackInfo.IsCover
         $liveArg = if ($isLive) { "--force-live" } else { "--force-studio" }
         $coverArtist = ""
@@ -1717,6 +2368,7 @@ try {
             $yearText = $trackInfo.YearText
             $extraText = $trackInfo.ExtraText
             $isLive = [bool]$trackInfo.IsLive
+            $useLiveLyrics = $false
             $isCover = [bool]$trackInfo.IsCover
             $liveArg = if ($isLive) { "--force-live" } else { "--force-studio" }
             $coverArtist = ""
@@ -1739,7 +2391,12 @@ try {
 
         Write-Log "Confirmed hint for $file : $hint"
         try {
-            $json = Run-Python -Code $processor -PyArgs @($file, $hint, $autoAdd, $liveArg, $coverArtist)
+            $liveLyricsArg = "--no-live-lyrics"
+            $coverArtistArg = $coverArtist
+            if ([string]::IsNullOrWhiteSpace($coverArtistArg)) {
+                $coverArtistArg = "__NO_COVER_ARTIST__"
+            }
+            $json = Run-Python -Code $processor -PyArgs @($file, $hint, $autoAdd, $liveArg, $coverArtistArg, $liveLyricsArg)
             Write-Log "Python stdout for $file : $json"
             $result = $json | ConvertFrom-Json
             $parts = @("$($result.title) - $($result.artist)")
@@ -1748,6 +2405,7 @@ try {
             if ($result.composer) { $parts += ((& $Z "5L2c5puy77ya") + $result.composer) }
             if ($result.lyricist) { $parts += ((& $Z "5aGr6K+N77ya") + $result.lyricist) }
             if ($result.lyrics) { $parts += (& $Z "5q2M6K+N77ya5bey5YaZ5YWl") }
+            if ($isLive -and $useLiveLyrics) { $parts += (& $Z "TGl2ZSDmrYzor43vvJrlt7LlsJ3or5XnlJ/miJA=") }
             if ($result.artwork) { $parts += (& $Z "5bCB6Z2i77ya5bey5YaZ5YWl") }
             $done.Add(($parts -join "`r`n  "))
             Write-Log "Imported OK: $($result.title) - $($result.artist)"
