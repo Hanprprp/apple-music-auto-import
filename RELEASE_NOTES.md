@@ -1,25 +1,26 @@
-# v0.2.3
+# v0.2.4
 
-This release focuses on making the tool more stable for real local Apple Music imports.
+This release improves album and playlist batch importing.
 
-## Changed
+## Added
 
-- Removed the experimental live lyric transcription feature.
-- Live mode no longer tries to listen to the audio or generate guessed live lyrics.
-- Lyrics now come only from normal online lyric sources when available.
-- Live tracks are still kept as separate local versions, with live title and album naming.
+- Added playlist/album batch mode for supported YouTube-style links.
+- Added a shared album form so users can fill album name, album artist, year, live/cover status, and cover artist once.
+- Added a max-tracks field for playlist downloads. It defaults to 15 tracks to avoid importing a long automatic recommendation queue.
+- Added YouTube automatic Mix/Radio fallback through the YouTube Music queue API for `RD` / `RDEM` links.
+- Added album tracklist matching through online metadata so batch imports can write official track numbers.
 
 ## Improved
 
-- Better YouTube-style link handling by saving downloaded video metadata beside the audio file.
-- Better one-form defaults from video title and description, including title, artist, album, year, and extra hints.
-- Cleaner song title detection for noisy video titles with tags, channel text, and bracketed notes.
-- More careful handling for live and cover versions so local imports are less likely to become the wrong official Apple Music track.
+- Batch mode now prefers official album track order instead of trusting YouTube Mix order.
+- If no album tracklist can be matched, the tool falls back to playlist order.
+- Playlist downloads save per-track sidecar metadata including title, artist, album, year, playlist index, and playlist count.
+- Documentation now explains the difference between normal playlists and YouTube automatic Mix/Radio queues.
 
 ## Fixed
 
-- Removed a source of inaccurate live lyrics that could overwrite otherwise usable lyrics.
-- Fixed release notes text encoding from the previous draft.
+- Prevented YouTube automatic Mix links from importing 50+ recommendation tracks by default.
+- Reduced wrong ordering for album imports, including My Little Airport album batches.
 
 ## Release Asset
 

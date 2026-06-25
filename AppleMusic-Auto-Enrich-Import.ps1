@@ -186,6 +186,143 @@ function Ask-TrackInfo {
     return $result
 }
 
+function Ask-AlbumBatchInfo {
+    param(
+        [int]$TrackCount = 0,
+        [string]$DefaultAlbum = "",
+        [string]$DefaultArtist = "",
+        [string]$DefaultYear = ""
+    )
+
+    Add-Type -AssemblyName System.Windows.Forms | Out-Null
+    Add-Type -AssemblyName System.Drawing | Out-Null
+    $D = { param([string]$B64) Decode-Utf8 $B64 }
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = (& $D "5om56YeP5a+85YWl5pW05byg5LiT6L6R")
+    $form.StartPosition = "CenterScreen"
+    $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $false
+    $form.ClientSize = New-Object System.Drawing.Size(560, 360)
+    $form.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 9)
+
+    $note = New-Object System.Windows.Forms.Label
+    $note.AutoSize = $false
+    $note.Location = New-Object System.Drawing.Point(18, 14)
+    $note.Size = New-Object System.Drawing.Size(520, 44)
+    $note.Text = (& $D "5qOA5rWL5Yiw5aSa6aaW5q2M44CC5Y+q5aGr5LiA5qyh5YWx55So5L+h5oGv77yM5LmL5ZCO5Lya5oyJ5YiX6KGo6aG65bqP5YaZ5YWl5ZCM5LiA5byg5LiT6L6R44CC")
+    $form.Controls.Add($note)
+
+    $countLabel = New-Object System.Windows.Forms.Label
+    $countLabel.AutoSize = $false
+    $countLabel.Location = New-Object System.Drawing.Point(18, 62)
+    $countLabel.Size = New-Object System.Drawing.Size(520, 22)
+    $countLabel.Text = (& $D "5q2M5puy5pWw6YeP77ya") + $TrackCount
+    $form.Controls.Add($countLabel)
+
+    function Add-Label {
+        param([string]$Text, [int]$Y)
+        $label = New-Object System.Windows.Forms.Label
+        $label.AutoSize = $false
+        $label.Location = New-Object System.Drawing.Point(20, $Y)
+        $label.Size = New-Object System.Drawing.Size(150, 24)
+        $label.Text = $Text
+        $form.Controls.Add($label)
+        return $label
+    }
+
+    function Add-TextBox {
+        param([string]$Text, [int]$Y)
+        $box = New-Object System.Windows.Forms.TextBox
+        $box.Location = New-Object System.Drawing.Point(178, $Y)
+        $box.Size = New-Object System.Drawing.Size(360, 25)
+        $box.Text = $Text
+        $box.ImeMode = [System.Windows.Forms.ImeMode]::On
+        $form.Controls.Add($box)
+        return $box
+    }
+
+    Add-Label (& $D "5LiT6L6R5ZCN") 100 | Out-Null
+    $albumBox = Add-TextBox $DefaultAlbum 98
+    Add-Label (& $D "5LiT6L6R5q2M5omLIC8g6buY6K6k5q2M5omL") 140 | Out-Null
+    $artistBox = Add-TextBox $DefaultArtist 138
+    Add-Label (& $D "5bm05Lu977yI5Y+v6YCJ77yJ") 180 | Out-Null
+    $yearBox = Add-TextBox $DefaultYear 178
+
+    $liveBox = New-Object System.Windows.Forms.CheckBox
+    $liveBox.Location = New-Object System.Drawing.Point(178, 218)
+    $liveBox.Size = New-Object System.Drawing.Size(180, 24)
+    $liveBox.Text = (& $D "6L+Z5pivIExpdmUgLyDnjrDlnLrniYg=")
+    $form.Controls.Add($liveBox)
+
+    $coverBox = New-Object System.Windows.Forms.CheckBox
+    $coverBox.Location = New-Object System.Drawing.Point(178, 248)
+    $coverBox.Size = New-Object System.Drawing.Size(180, 24)
+    $coverBox.Text = (& $D "6L+Z5piv57+75ZSx54mI")
+    $form.Controls.Add($coverBox)
+
+    Add-Label (& $D "57+75ZSx6ICFIC8g5b2T5YmN5ryU5ZSx6ICF") 280 | Out-Null
+    $coverArtistBox = Add-TextBox "" 278
+    $coverArtistBox.Enabled = $false
+    $coverBox.Add_CheckedChanged({
+        $coverArtistBox.Enabled = $coverBox.Checked
+        if ($coverBox.Checked -and [string]::IsNullOrWhiteSpace($coverArtistBox.Text)) {
+            $coverArtistBox.Text = $artistBox.Text
+        }
+    })
+
+    $confirmEachBox = New-Object System.Windows.Forms.CheckBox
+    $confirmEachBox.Location = New-Object System.Drawing.Point(20, 316)
+    $confirmEachBox.Size = New-Object System.Drawing.Size(270, 24)
+    $confirmEachBox.Text = (& $D "5q+P6aaW5q2M5LuN54S26YCQ5Liq56Gu6K6k77yI5pu05oWi77yJ")
+    $confirmEachBox.Checked = $false
+    $form.Controls.Add($confirmEachBox)
+
+    $okButton = New-Object System.Windows.Forms.Button
+    $okButton.Location = New-Object System.Drawing.Point(338, 316)
+    $okButton.Size = New-Object System.Drawing.Size(90, 28)
+    $okButton.Text = (& $D "56Gu5a6a")
+    $form.Controls.Add($okButton)
+
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Location = New-Object System.Drawing.Point(448, 316)
+    $cancelButton.Size = New-Object System.Drawing.Size(90, 28)
+    $cancelButton.Text = (& $D "5Y+W5raI")
+    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $form.Controls.Add($cancelButton)
+    $form.CancelButton = $cancelButton
+
+    $script:AskAlbumBatchInfoResult = $null
+    $okButton.Add_Click({
+        if ([string]::IsNullOrWhiteSpace($albumBox.Text)) {
+            $albumBox.Focus()
+            return
+        }
+        $script:AskAlbumBatchInfoResult = [PSCustomObject]@{
+            Cancelled = $false
+            AlbumName = $albumBox.Text.Trim()
+            ArtistName = $artistBox.Text.Trim()
+            YearText = $yearBox.Text.Trim()
+            IsLive = [bool]$liveBox.Checked
+            IsCover = [bool]$coverBox.Checked
+            CoverArtist = $coverArtistBox.Text.Trim()
+            ConfirmEachTrack = [bool]$confirmEachBox.Checked
+        }
+        $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $form.Close()
+    })
+
+    $albumBox.Select()
+    $dialogResult = $form.ShowDialog()
+    if ($dialogResult -ne [System.Windows.Forms.DialogResult]::OK -or -not $script:AskAlbumBatchInfoResult) {
+        return [PSCustomObject]@{ Cancelled = $true }
+    }
+    $result = $script:AskAlbumBatchInfoResult
+    $script:AskAlbumBatchInfoResult = $null
+    return $result
+}
+
 function Pick-Files {
     Add-Type -AssemblyName System.Windows.Forms | Out-Null
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
@@ -223,6 +360,28 @@ function Get-ClipboardUrls {
     return $urls.ToArray()
 }
 
+function Get-UrlQueryValue {
+    param([string]$Url, [string]$Name)
+    if ([string]::IsNullOrWhiteSpace($Url) -or [string]::IsNullOrWhiteSpace($Name)) {
+        return ""
+    }
+    $pattern = "(?:\?|&)" + [regex]::Escape($Name) + "=([^&#]+)"
+    $match = [regex]::Match($Url, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $match.Success) {
+        return ""
+    }
+    return [System.Uri]::UnescapeDataString($match.Groups[1].Value)
+}
+
+function Test-YouTubeAutoMixUrl {
+    param([string]$Url)
+    $listId = Get-UrlQueryValue -Url $Url -Name "list"
+    if ([string]::IsNullOrWhiteSpace($listId)) {
+        return $false
+    }
+    return ($listId -match '^(?i:RD)')
+}
+
 function Ask-AudioSource {
     param([string[]]$ClipboardUrls = @())
 
@@ -236,7 +395,7 @@ function Ask-AudioSource {
     $form.FormBorderStyle = "FixedDialog"
     $form.MaximizeBox = $false
     $form.MinimizeBox = $false
-    $form.ClientSize = New-Object System.Drawing.Size(600, 360)
+    $form.ClientSize = New-Object System.Drawing.Size(600, 400)
     $form.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 9)
 
     $note = New-Object System.Windows.Forms.Label
@@ -264,7 +423,7 @@ function Ask-AudioSource {
 
     $urlBox = New-Object System.Windows.Forms.TextBox
     $urlBox.Location = New-Object System.Drawing.Point(20, 116)
-    $urlBox.Size = New-Object System.Drawing.Size(560, 160)
+    $urlBox.Size = New-Object System.Drawing.Size(560, 140)
     $urlBox.Multiline = $true
     $urlBox.ScrollBars = "Vertical"
     $urlBox.ImeMode = [System.Windows.Forms.ImeMode]::Off
@@ -273,21 +432,41 @@ function Ask-AudioSource {
     }
     $form.Controls.Add($urlBox)
 
+    $maxLabel = New-Object System.Windows.Forms.Label
+    $maxLabel.AutoSize = $false
+    $maxLabel.Location = New-Object System.Drawing.Point(20, 266)
+    $maxLabel.Size = New-Object System.Drawing.Size(400, 24)
+    $maxLabel.Text = (& $D "5pyA5aSa5LiL6L296aaW5pWw77yI6Ieq5Yqo5ZCI6L6R5bu66K6uIDE177yM5pmu6YCa5YiX6KGo5Y+v5riF56m677yJ")
+    $form.Controls.Add($maxLabel)
+
+    $maxBox = New-Object System.Windows.Forms.TextBox
+    $maxBox.Location = New-Object System.Drawing.Point(430, 264)
+    $maxBox.Size = New-Object System.Drawing.Size(60, 25)
+    $maxBox.Text = "15"
+    $maxBox.ImeMode = [System.Windows.Forms.ImeMode]::Off
+    $form.Controls.Add($maxBox)
+
     $downloadButton = New-Object System.Windows.Forms.Button
-    $downloadButton.Location = New-Object System.Drawing.Point(250, 304)
-    $downloadButton.Size = New-Object System.Drawing.Size(100, 30)
-    $downloadButton.Text = (& $D "5LiL6L296ZO+5o6l")
+    $downloadButton.Location = New-Object System.Drawing.Point(166, 344)
+    $downloadButton.Size = New-Object System.Drawing.Size(92, 30)
+    $downloadButton.Text = (& $D "5LiL6L295b2T5YmN")
     $form.Controls.Add($downloadButton)
 
+    $playlistButton = New-Object System.Windows.Forms.Button
+    $playlistButton.Location = New-Object System.Drawing.Point(268, 344)
+    $playlistButton.Size = New-Object System.Drawing.Size(126, 30)
+    $playlistButton.Text = (& $D "5LiL6L295pW05bygL+WIl+ihqA==")
+    $form.Controls.Add($playlistButton)
+
     $fileButton = New-Object System.Windows.Forms.Button
-    $fileButton.Location = New-Object System.Drawing.Point(360, 304)
+    $fileButton.Location = New-Object System.Drawing.Point(404, 344)
     $fileButton.Size = New-Object System.Drawing.Size(110, 30)
     $fileButton.Text = (& $D "6YCJ5oup5pys5Zyw5paH5Lu2")
     $form.Controls.Add($fileButton)
 
     $cancelButton = New-Object System.Windows.Forms.Button
-    $cancelButton.Location = New-Object System.Drawing.Point(482, 304)
-    $cancelButton.Size = New-Object System.Drawing.Size(96, 30)
+    $cancelButton.Location = New-Object System.Drawing.Point(524, 344)
+    $cancelButton.Size = New-Object System.Drawing.Size(56, 30)
     $cancelButton.Text = (& $D "5Y+W5raI")
     $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
     $form.Controls.Add($cancelButton)
@@ -300,12 +479,30 @@ function Ask-AudioSource {
             [System.Windows.Forms.MessageBox]::Show((& $D "5rKh5pyJ5Y+v5LiL6L2955qE6ZO+5o6l44CC"), $form.Text, "OK", "Warning") | Out-Null
             return
         }
-        $script:AudioSourceResult = [PSCustomObject]@{ Mode = "Url"; Urls = @($urls); Cancelled = $false }
+        $script:AudioSourceResult = [PSCustomObject]@{ Mode = "Url"; Urls = @($urls); PlaylistMode = $false; MaxPlaylistItems = 0; Cancelled = $false }
+        $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $form.Close()
+    })
+    $playlistButton.Add_Click({
+        $urls = [regex]::Matches($urlBox.Text, 'https?://[^\s<>"'']+') | ForEach-Object { $_.Value.Trim().TrimEnd('.', ',', ';', ')', ']', '}') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+        if (-not $urls -or $urls.Count -eq 0) {
+            [System.Windows.Forms.MessageBox]::Show((& $D "5rKh5pyJ5Y+v5LiL6L2955qE6ZO+5o6l44CC"), $form.Text, "OK", "Warning") | Out-Null
+            return
+        }
+        $maxItems = 0
+        if (-not [string]::IsNullOrWhiteSpace($maxBox.Text)) {
+            if (-not [int]::TryParse($maxBox.Text.Trim(), [ref]$maxItems) -or $maxItems -lt 1) {
+                [System.Windows.Forms.MessageBox]::Show((& $D "6K+36L6T5YWl5pyJ5pWI5pWw5a2X77yM5oiW55WZ56m644CC"), $form.Text, "OK", "Warning") | Out-Null
+                $maxBox.Focus()
+                return
+            }
+        }
+        $script:AudioSourceResult = [PSCustomObject]@{ Mode = "Url"; Urls = @($urls); PlaylistMode = $true; MaxPlaylistItems = $maxItems; Cancelled = $false }
         $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
         $form.Close()
     })
     $fileButton.Add_Click({
-        $script:AudioSourceResult = [PSCustomObject]@{ Mode = "Files"; Urls = @(); Cancelled = $false }
+        $script:AudioSourceResult = [PSCustomObject]@{ Mode = "Files"; Urls = @(); PlaylistMode = $false; MaxPlaylistItems = 0; Cancelled = $false }
         $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
         $form.Close()
     })
@@ -313,7 +510,7 @@ function Ask-AudioSource {
     $urlBox.Select()
     $dialogResult = $form.ShowDialog()
     if ($dialogResult -ne [System.Windows.Forms.DialogResult]::OK -or -not $script:AudioSourceResult) {
-        return [PSCustomObject]@{ Mode = "Cancel"; Urls = @(); Cancelled = $true }
+        return [PSCustomObject]@{ Mode = "Cancel"; Urls = @(); PlaylistMode = $false; MaxPlaylistItems = 0; Cancelled = $true }
     }
     $result = $script:AudioSourceResult
     $script:AudioSourceResult = $null
@@ -502,7 +699,9 @@ function Run-Python {
 function Download-VideoUrls {
     param(
         [string[]]$Urls,
-        [string]$PythonExe
+        [string]$PythonExe,
+        [bool]$PlaylistMode = $false,
+        [int]$MaxPlaylistItems = 0
     )
 
     if (-not $Urls -or $Urls.Count -eq 0) {
@@ -519,75 +718,281 @@ function Download-VideoUrls {
     $code = @'
 import json
 import os
+import re
 import sys
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 import yt_dlp
 
 download_root = Path(sys.argv[1])
 result_file = Path(sys.argv[2])
-urls = sys.argv[3:]
+download_playlist = sys.argv[3] == "1"
+try:
+    max_playlist_items = int(sys.argv[4] or "0")
+except Exception:
+    max_playlist_items = 0
+urls = sys.argv[5:]
 download_root.mkdir(parents=True, exist_ok=True)
 downloaded = []
 errors = []
 records = []
+radio_items_by_id = {}
 
-def compact_info(info):
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
+
+def query_value(url, name):
+    try:
+        parsed = urllib.parse.urlparse(url)
+        values = urllib.parse.parse_qs(parsed.query).get(name) or []
+        return values[0] if values else ""
+    except Exception:
+        return ""
+
+def is_youtube_auto_mix(url):
+    list_id = query_value(url, "list")
+    return bool(list_id and list_id.upper().startswith("RD"))
+
+def text_value(node):
+    if not node:
+        return ""
+    if isinstance(node, str):
+        return node
+    if isinstance(node, dict):
+        if node.get("simpleText"):
+            return node.get("simpleText") or ""
+        runs = node.get("runs") or []
+        return "".join((run.get("text") or "") for run in runs if isinstance(run, dict))
+    return ""
+
+def split_music_byline(byline):
+    parts = [part.strip() for part in re.split(r"\s*[\u2022]\s*", byline or "") if part.strip()]
+    artist = parts[0] if len(parts) >= 1 else ""
+    album = parts[1] if len(parts) >= 2 else ""
+    year = ""
+    for part in reversed(parts):
+        m = re.search(r"(19|20)\d{2}", part)
+        if m:
+            year = m.group(0)
+            break
+    return artist, album, year
+
+def find_youtube_api_key():
+    for url in ("https://music.youtube.com/", "https://www.youtube.com/"):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"})
+            html = urllib.request.urlopen(req, timeout=20).read().decode("utf-8", "replace")
+            m = re.search(r'"INNERTUBE_API_KEY":"([^"]+)"', html)
+            if m:
+                return m.group(1)
+        except Exception:
+            pass
+    return ""
+
+def collect_playlist_panel_items(data):
+    renderers = []
+    def walk(obj):
+        if isinstance(obj, dict):
+            renderer = obj.get("playlistPanelVideoRenderer")
+            if renderer:
+                renderers.append(renderer)
+            for value in obj.values():
+                walk(value)
+        elif isinstance(obj, list):
+            for value in obj:
+                walk(value)
+    walk(data)
+
+    out = []
+    seen = set()
+    for index, renderer in enumerate(renderers, 1):
+        endpoint = renderer.get("navigationEndpoint") or {}
+        watch = endpoint.get("watchEndpoint") or {}
+        video_id = renderer.get("videoId") or watch.get("videoId") or ""
+        if not video_id or video_id in seen:
+            continue
+        seen.add(video_id)
+        byline = text_value(renderer.get("longBylineText") or renderer.get("shortBylineText"))
+        artist, album, year = split_music_byline(byline)
+        title = text_value(renderer.get("title")) or video_id
+        out.append({
+            "id": video_id,
+            "title": title,
+            "artist": artist,
+            "album": album,
+            "release_year": year,
+            "playlist_index": index,
+        })
+    return out
+
+def fetch_youtube_auto_mix_items(source_url):
+    list_id = query_value(source_url, "list")
+    if not list_id:
+        return []
+    video_id = query_value(source_url, "v")
+    api_key = find_youtube_api_key()
+    if not api_key:
+        return []
+    endpoint = "https://www.youtube.com/youtubei/v1/next?key=" + api_key
+    attempts = []
+    if video_id:
+        attempts.append({"videoId": video_id, "playlistId": list_id})
+    attempts.append({"playlistId": list_id})
+    for extra in attempts:
+        payload = {
+            "context": {
+                "client": {
+                    "clientName": "WEB_REMIX",
+                    "clientVersion": "1.20260623.01.00",
+                    "hl": "zh-CN",
+                    "gl": "HK",
+                }
+            }
+        }
+        payload.update(extra)
+        try:
+            req = urllib.request.Request(
+                endpoint,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Content-Type": "application/json",
+                    "Origin": "https://music.youtube.com",
+                    "Referer": "https://music.youtube.com/playlist?list=" + urllib.parse.quote(list_id),
+                },
+            )
+            data = json.loads(urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "replace"))
+            items = collect_playlist_panel_items(data)
+            if len(items) > 1:
+                return items
+        except Exception:
+            continue
+    return []
+
+def compact_info(info, playlist_info=None):
     if not info:
         return {}
+    playlist_info = playlist_info or {}
+    radio_item = radio_items_by_id.get(info.get("id") or "") or {}
+    entries = playlist_info.get("entries") or []
+    playlist_count = (
+        info.get("playlist_count")
+        or info.get("n_entries")
+        or playlist_info.get("playlist_count")
+        or playlist_info.get("n_entries")
+        or radio_item.get("playlist_count")
+        or (len(entries) if entries else "")
+        or ""
+    )
     return {
         "id": info.get("id") or "",
-        "title": info.get("title") or "",
+        "title": radio_item.get("title") or info.get("title") or "",
         "fulltitle": info.get("fulltitle") or "",
         "alt_title": info.get("alt_title") or "",
         "uploader": info.get("uploader") or "",
         "channel": info.get("channel") or "",
-        "artist": info.get("artist") or "",
-        "track": info.get("track") or "",
-        "album": info.get("album") or "",
-        "release_year": info.get("release_year") or "",
+        "artist": radio_item.get("artist") or info.get("artist") or "",
+        "track": radio_item.get("title") or info.get("track") or "",
+        "album": radio_item.get("album") or info.get("album") or "",
+        "release_year": radio_item.get("release_year") or info.get("release_year") or "",
         "release_date": info.get("release_date") or "",
         "upload_date": info.get("upload_date") or "",
         "webpage_url": info.get("webpage_url") or "",
+        "thumbnail": info.get("thumbnail") or "",
+        "playlist": radio_item.get("playlist_title") or info.get("playlist") or playlist_info.get("playlist") or playlist_info.get("title") or "",
+        "playlist_title": radio_item.get("playlist_title") or info.get("playlist_title") or playlist_info.get("playlist_title") or playlist_info.get("title") or "",
+        "playlist_id": radio_item.get("playlist_id") or info.get("playlist_id") or playlist_info.get("id") or "",
+        "playlist_uploader": radio_item.get("artist") or info.get("playlist_uploader") or playlist_info.get("uploader") or "",
+        "playlist_channel": info.get("playlist_channel") or playlist_info.get("channel") or "",
+        "playlist_index": radio_item.get("playlist_index") or info.get("playlist_index") or info.get("playlist_autonumber") or "",
+        "playlist_count": playlist_count,
+        "playlist_webpage_url": radio_item.get("playlist_webpage_url") or playlist_info.get("webpage_url") or "",
         "description": (info.get("description") or "")[:20000],
     }
 
-def write_sidecar(path, info):
+def write_sidecar(path, info, playlist_info=None):
     sidecar = Path(str(path) + ".aminfo.json")
-    sidecar.write_text(json.dumps(compact_info(info), ensure_ascii=False, indent=2), encoding="utf-8")
+    sidecar.write_text(json.dumps(compact_info(info, playlist_info), ensure_ascii=False, indent=2), encoding="utf-8")
 
+def add_download(path, info, playlist_info=None):
+    if not path or not Path(path).exists():
+        return False
+    resolved = str(Path(path).resolve())
+    downloaded.append(resolved)
+    write_sidecar(resolved, info, playlist_info)
+    records.append({"file": resolved, "info": compact_info(info, playlist_info)})
+    return True
+
+expanded_urls = []
+force_single_urls = set()
 for url in urls:
-    before = {p.resolve() for p in download_root.glob("*") if p.is_file()}
+    if download_playlist and is_youtube_auto_mix(url):
+        items = fetch_youtube_auto_mix_items(url)
+        if not items:
+            errors.append(f"{url}: could not expand YouTube automatic Mix/Radio queue")
+            continue
+        if max_playlist_items > 0:
+            items = items[:max_playlist_items]
+        list_id = query_value(url, "list")
+        total = len(items)
+        for item in items:
+            video_id = item.get("id") or ""
+            if not video_id:
+                continue
+            item["playlist_count"] = total
+            item["playlist_id"] = list_id
+            item["playlist_title"] = "YouTube Auto Mix"
+            item["playlist_webpage_url"] = url
+            radio_items_by_id[video_id] = item
+            single_url = "https://www.youtube.com/watch?v=" + video_id
+            expanded_urls.append(single_url)
+            force_single_urls.add(single_url)
+    else:
+        expanded_urls.append(url)
+
+for url in expanded_urls:
+    before = {p.resolve() for p in download_root.glob("*") if p.is_file() and not p.name.endswith(".aminfo.json")}
+    template = "%(title).180s [%(id)s].%(ext)s"
+    if download_playlist and url not in force_single_urls:
+        template = "%(playlist_index)03d - %(title).160s [%(id)s].%(ext)s"
     options = {
         "format": "bestaudio/best",
-        "outtmpl": str(download_root / "%(title).180s [%(id)s].%(ext)s"),
-        "noplaylist": True,
+        "outtmpl": str(download_root / template),
+        "noplaylist": (not download_playlist) or (url in force_single_urls),
         "quiet": True,
         "no_warnings": True,
         "noprogress": True,
         "windowsfilenames": True,
         "restrictfilenames": False,
-        "ignoreerrors": False,
+        "ignoreerrors": bool(download_playlist),
     }
+    if download_playlist and max_playlist_items > 0 and url not in force_single_urls:
+        options["playlistend"] = max_playlist_items
     try:
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=True)
+            if not info:
+                continue
+            added = 0
+            for entry in (info.get("entries") or []):
+                if not entry:
+                    continue
+                for item in (entry.get("requested_downloads") or []):
+                    if add_download(item.get("filepath"), entry, info):
+                        added += 1
             requested = info.get("requested_downloads") or []
             for item in requested:
-                filepath = item.get("filepath")
-                if filepath and Path(filepath).exists():
-                    resolved = str(Path(filepath).resolve())
-                    downloaded.append(resolved)
-                    write_sidecar(resolved, info)
-                    records.append({"file": resolved, "info": compact_info(info)})
-            if not requested:
-                after = {p.resolve() for p in download_root.glob("*") if p.is_file()}
+                if add_download(item.get("filepath"), info):
+                    added += 1
+            if added == 0:
+                after = {p.resolve() for p in download_root.glob("*") if p.is_file() and not p.name.endswith(".aminfo.json")}
                 new_files = sorted(after - before, key=lambda p: p.stat().st_mtime, reverse=True)
-                if new_files:
-                    resolved = str(new_files[0])
-                    downloaded.append(resolved)
-                    write_sidecar(resolved, info)
-                    records.append({"file": resolved, "info": compact_info(info)})
+                if download_playlist:
+                    for item_path in reversed(new_files):
+                        add_download(str(item_path), info)
+                elif new_files:
+                    add_download(str(new_files[0]), info)
     except Exception as exc:
         errors.append(f"{url}: {exc}")
 
@@ -604,7 +1009,8 @@ if errors and not unique:
 '@
 
     try {
-        Run-Python -Code $code -PyArgs (@($downloadRoot, $resultFile) + $Urls) | Out-Null
+        $playlistFlag = if ($PlaylistMode) { "1" } else { "0" }
+        Run-Python -Code $code -PyArgs (@($downloadRoot, $resultFile, $playlistFlag, [string]$MaxPlaylistItems) + $Urls) | Out-Null
         if (-not (Test-Path -LiteralPath $resultFile)) {
             throw "Download helper did not write a result file."
         }
@@ -615,7 +1021,15 @@ if errors and not unique:
         }
         $files = @($result.files) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
         if ($files.Count -eq 0) {
-            throw "No audio file was downloaded."
+            $errorText = (($result.errors | Out-String).Trim())
+            if ([string]::IsNullOrWhiteSpace($errorText)) {
+                $errorText = "No audio file was downloaded."
+            }
+            throw $errorText
+        }
+        $hasListUrl = @($Urls | Where-Object { -not [string]::IsNullOrWhiteSpace((Get-UrlQueryValue -Url $_ -Name "list")) }).Count -gt 0
+        if ($PlaylistMode -and $hasListUrl -and $files.Count -le 1) {
+            throw (& $D "5pKt5pS+5YiX6KGo5rKh5pyJ5bGV5byA77yM5Y+q5LiL6L295Yiw5LiA6aaW44CC6L+Z5Liq6ZO+5o6l5Y+v6IO95LiN5piv5pmu6YCa5pKt5pS+5YiX6KGo44CC")
         }
         return $files
     }
@@ -720,6 +1134,18 @@ function Clean-VideoTitleForSongName {
     return $value.Trim(" `t-_")
 }
 
+function Clean-PlaylistAlbumTitle {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return ""
+    }
+    $value = Clean-VideoMetaText $Text
+    $value = $value -replace '^\s*(?:\u5408\u8f2f|\u5408\u8f91|playlist|album|mix)\s*[-:\uFF1A]\s*', ''
+    $value = $value -replace '\s*-\s*topic\s*$', ''
+    $value = $value -replace '\s+', ' '
+    return $value.Trim(" `t-_")
+}
+
 function Infer-ArtistFromTitle {
     param([string]$Text)
     if ([string]::IsNullOrWhiteSpace($Text)) {
@@ -765,6 +1191,12 @@ function Get-TrackDefaultsFromVideoInfo {
         Album = ""
         Year = ""
         Extra = ""
+        PlaylistTitle = ""
+        PlaylistIndex = ""
+        PlaylistCount = ""
+        PlaylistId = ""
+        PlaylistUploader = ""
+        Thumbnail = ""
     }
 
     $sidecar = "$AudioFile.aminfo.json"
@@ -782,6 +1214,8 @@ function Get-TrackDefaultsFromVideoInfo {
     $titleText = Clean-VideoMetaText (($info.title, $info.fulltitle, $info.alt_title) -join "`n")
     $description = [string]($info.description)
     $combined = (($info.title, $info.fulltitle, $info.alt_title, $description) -join "`n")
+    $rawPlaylistTitle = @($info.playlist_title, $info.playlist) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
+    $playlistTitle = Clean-PlaylistAlbumTitle $rawPlaylistTitle
 
     $title = Get-TextBetweenChars $combined 0x300A 0x300B
     if ([string]::IsNullOrWhiteSpace($title)) {
@@ -815,10 +1249,18 @@ function Get-TrackDefaultsFromVideoInfo {
         $artist = $artist -replace '(?i)\s*official.*$', ''
         $artist = $artist.Trim()
     }
+    if ([string]::IsNullOrWhiteSpace($artist) -and -not [string]::IsNullOrWhiteSpace($info.playlist_uploader)) {
+        $artist = ([string]$info.playlist_uploader) -replace '(?i)\s*-\s*topic$', ''
+        $artist = $artist -replace '(?i)\s*official.*$', ''
+        $artist = $artist.Trim()
+    }
 
     $album = Get-FirstRegexGroup $combined @('^\s*(?:\u4e13\u8f91|\u5c08\u8f2f|album)\s*[:\uFF1A\-]\s*(.+)$')
     if ([string]::IsNullOrWhiteSpace($album) -and -not [string]::IsNullOrWhiteSpace($info.album)) {
         $album = [string]$info.album
+    }
+    if ([string]::IsNullOrWhiteSpace($album) -and -not [string]::IsNullOrWhiteSpace($playlistTitle)) {
+        $album = $playlistTitle
     }
 
     $year = ""
@@ -851,7 +1293,40 @@ function Get-TrackDefaultsFromVideoInfo {
     $defaults.Album = $album
     $defaults.Year = $year
     $defaults.Extra = ($extraLines -join "`r`n")
+    $defaults.PlaylistTitle = $playlistTitle
+    $defaults.PlaylistIndex = [string]$info.playlist_index
+    $defaults.PlaylistCount = [string]$info.playlist_count
+    $defaults.PlaylistId = [string]$info.playlist_id
+    $defaults.PlaylistUploader = [string]$info.playlist_uploader
+    $defaults.Thumbnail = [string]$info.thumbnail
     return $defaults
+}
+
+function Get-MostCommonValue {
+    param([string[]]$Values)
+    $items = @($Values) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    if (-not $items -or $items.Count -eq 0) {
+        return ""
+    }
+    return ($items | Group-Object | Sort-Object Count -Descending | Select-Object -First 1).Name
+}
+
+function Get-AlbumBatchDefaults {
+    param([string[]]$Files)
+    $items = New-Object System.Collections.Generic.List[object]
+    foreach ($file in @($Files)) {
+        if (Test-Path -LiteralPath $file) {
+            $items.Add((Get-TrackDefaultsFromVideoInfo -AudioFile $file))
+        }
+    }
+    $album = Get-MostCommonValue (@($items | ForEach-Object { if ($_.PlaylistTitle) { $_.PlaylistTitle } elseif ($_.Album) { $_.Album } }))
+    $artist = Get-MostCommonValue (@($items | ForEach-Object { $_.Artist }))
+    $year = Get-MostCommonValue (@($items | ForEach-Object { $_.Year }))
+    return [PSCustomObject]@{
+        Album = $album
+        Artist = $artist
+        Year = $year
+    }
 }
 
 $processor = @'
@@ -1203,6 +1678,120 @@ def search_itunes(candidates):
     }
     return meta
 
+_ALBUM_TRACKLIST_CACHE = {}
+
+def album_name_matches(expected, actual):
+    expected_n = norm(expected)
+    actual_n = norm(actual)
+    if not expected_n or not actual_n:
+        return False
+    return expected_n == actual_n or expected_n in actual_n or actual_n in expected_n or ratio(expected, actual) >= 0.62
+
+def search_itunes_album_tracklist(album, artist):
+    album = (album or "").strip()
+    artist = (artist or "").strip()
+    cache_key = (norm(album), norm(artist))
+    if cache_key in _ALBUM_TRACKLIST_CACHE:
+        return _ALBUM_TRACKLIST_CACHE[cache_key]
+    if not album:
+        _ALBUM_TRACKLIST_CACHE[cache_key] = []
+        return []
+
+    countries = ["HK", "TW", "CN", "US", "JP"]
+    terms = []
+    if artist:
+        terms.extend([f"{artist} {album}", f"{album} {artist}"])
+    terms.append(album)
+
+    best_album = None
+    for term in terms:
+        for country in countries:
+            qs = urllib.parse.urlencode({"term": term, "media": "music", "entity": "album", "limit": 10, "country": country})
+            try:
+                data = http_json(f"https://itunes.apple.com/search?{qs}")
+            except Exception:
+                continue
+            for result in data.get("results", []):
+                collection = result.get("collectionName") or ""
+                result_artist = result.get("artistName") or result.get("collectionArtistName") or ""
+                album_score = ratio(album, collection)
+                if album_name_matches(album, collection):
+                    album_score = max(album_score, 0.86)
+                artist_score = ratio(artist, result_artist) if artist else 0.45
+                if artist and artist_matches(artist, result_artist):
+                    artist_score = max(artist_score, 0.80)
+                score = album_score * 0.74 + artist_score * 0.26
+                if norm(album) and norm(album) == norm(collection):
+                    score += 0.18
+                item = {"score": score, "country": country, "data": result}
+                if best_album is None or item["score"] > best_album["score"]:
+                    best_album = item
+            if best_album and best_album["score"] >= 0.88:
+                break
+        if best_album and best_album["score"] >= 0.88:
+            break
+
+    if not best_album or best_album["score"] < 0.58:
+        _ALBUM_TRACKLIST_CACHE[cache_key] = []
+        return []
+
+    collection_id = best_album["data"].get("collectionId")
+    if not collection_id:
+        _ALBUM_TRACKLIST_CACHE[cache_key] = []
+        return []
+    country = best_album["country"]
+    qs = urllib.parse.urlencode({"id": collection_id, "entity": "song", "country": country})
+    try:
+        data = http_json(f"https://itunes.apple.com/lookup?{qs}")
+    except Exception:
+        _ALBUM_TRACKLIST_CACHE[cache_key] = []
+        return []
+
+    tracks = []
+    for result in data.get("results", []):
+        if result.get("wrapperType") != "track":
+            continue
+        tracks.append({
+            "title": result.get("trackName") or "",
+            "artist": result.get("artistName") or "",
+            "album": result.get("collectionName") or best_album["data"].get("collectionName") or album,
+            "album_artist": result.get("collectionArtistName") or result.get("artistName") or artist,
+            "track_number": result.get("trackNumber") or 1,
+            "track_count": result.get("trackCount") or len(data.get("results", [])),
+            "disc_number": result.get("discNumber") or 1,
+            "disc_count": result.get("discCount") or 1,
+            "release_date": (result.get("releaseDate") or best_album["data"].get("releaseDate") or "")[:10],
+            "genre": result.get("primaryGenreName") or "",
+            "artwork_url": normalize_itunes_artwork(result.get("artworkUrl100") or best_album["data"].get("artworkUrl100") or ""),
+            "source": f"iTunes album tracklist {country} collection={collection_id} score={best_album['score']:.4f}",
+        })
+    _ALBUM_TRACKLIST_CACHE[cache_key] = tracks
+    return tracks
+
+def find_album_track_order(title, artist, album):
+    tracks = search_itunes_album_tracklist(album, artist)
+    if not tracks:
+        return {}
+    best = None
+    for track in tracks:
+        title_score = ratio(title, track.get("title"))
+        if norm(title) and norm(title) == norm(track.get("title")):
+            title_score = 1.0
+        elif norm(title) and (norm(title) in norm(track.get("title")) or norm(track.get("title")) in norm(title)):
+            title_score = max(title_score, 0.88)
+        artist_score = ratio(artist, track.get("artist")) if artist else 0.50
+        if artist and artist_matches(artist, track.get("artist")):
+            artist_score = max(artist_score, 0.78)
+        score = title_score * 0.82 + artist_score * 0.18
+        item = {"score": score, "track": track}
+        if best is None or item["score"] > best["score"]:
+            best = item
+    if not best or best["score"] < 0.58:
+        return {}
+    out = dict(best["track"])
+    out["match_score"] = best["score"]
+    return out
+
 def mb_query_value(text):
     return '"' + (text or "").replace('"', r'\"') + '"'
 
@@ -1502,6 +2091,71 @@ def extract_hint_credits(hint):
         out["year"] = year_match.group(0)
         out["release_date"] = year_match.group(0)
     return out
+
+def int_or_zero(value):
+    try:
+        text = str(value or "").strip()
+        if not text:
+            return 0
+        return int(float(text))
+    except Exception:
+        return 0
+
+def optional_int_arg(args, prefix):
+    for arg in args:
+        if (arg or "").startswith(prefix):
+            return int_or_zero((arg or "")[len(prefix):])
+    return 0
+
+def apply_album_batch_adjustment(meta, source, hint, optional_args):
+    info = load_video_sidecar(source)
+    title = extract_labeled_value(hint, ["\u6b4c\u540d", "\u66f2\u540d", "\u6b4c\u66f2", "\u66f2\u76ee", "title", "song"])
+    artist = extract_labeled_value(hint, ["\u6b4c\u624b", "\u6f14\u5531", "\u6f14\u5531\u8005", "\u539f\u5531", "artist", "singer", "vocal", "performer"])
+    album = extract_labeled_value(hint, ["\u4e13\u8f91", "\u5c08\u8f2f", "album"])
+    year = extract_labeled_value(hint, ["\u5e74\u4efd", "\u53d1\u884c", "\u767c\u884c", "year", "release"])
+    track_number = optional_int_arg(optional_args, "__TRACK_NUMBER=") or int_or_zero(info.get("playlist_index"))
+    track_count = optional_int_arg(optional_args, "__TRACK_COUNT=") or int_or_zero(info.get("playlist_count"))
+
+    if title:
+        meta["title"] = title
+    if artist:
+        meta["artist"] = artist
+        meta["album_artist"] = artist
+    if album:
+        meta["album"] = album
+    year_match = re.search(r"(19|20)\d{2}", year or "")
+    if year_match:
+        meta["year"] = year_match.group(0)
+        meta["release_date"] = year_match.group(0)
+    if track_number > 0:
+        meta["track_number"] = track_number
+    if track_count > 0:
+        meta["track_count"] = track_count
+    official_track = {}
+    if album and (title or meta.get("title")):
+        official_track = find_album_track_order(title or meta.get("title"), artist or meta.get("artist"), album)
+    if official_track:
+        meta["title"] = official_track.get("title") or meta.get("title")
+        meta["album"] = official_track.get("album") or meta.get("album")
+        if not artist and official_track.get("artist"):
+            meta["artist"] = official_track.get("artist")
+        meta["album_artist"] = official_track.get("album_artist") or meta.get("album_artist") or meta.get("artist")
+        meta["track_number"] = official_track.get("track_number") or meta.get("track_number") or 1
+        meta["track_count"] = official_track.get("track_count") or meta.get("track_count") or 1
+        meta["disc_number"] = official_track.get("disc_number") or meta.get("disc_number") or 1
+        meta["disc_count"] = official_track.get("disc_count") or meta.get("disc_count") or 1
+        if official_track.get("release_date") and not year_match:
+            meta["release_date"] = official_track["release_date"]
+            meta["year"] = official_track["release_date"][:4]
+        if official_track.get("genre") and not meta.get("genre"):
+            meta["genre"] = official_track["genre"]
+        if official_track.get("artwork_url") and not has_artwork(meta):
+            meta["artwork_url"] = official_track["artwork_url"]
+        append_source(meta, (official_track.get("source") or "album tracklist") + f" match={official_track.get('match_score', 0):.4f}")
+    meta["disc_number"] = meta.get("disc_number") or 1
+    meta["disc_count"] = meta.get("disc_count") or 1
+    append_source(meta, "album batch metadata applied")
+    return meta
 
 def lyric_lines(text):
     out = []
@@ -2060,10 +2714,11 @@ def main():
     force_live = len(sys.argv) > 4 and sys.argv[4] == "--force-live"
     force_studio = len(sys.argv) > 4 and sys.argv[4] == "--force-studio"
     optional_args = sys.argv[5:]
+    album_batch = "--album-batch" in optional_args
     cover_artist = ""
     for arg in optional_args:
         arg = (arg or "").strip()
-        if not arg or arg.startswith("--") or arg == "__NO_COVER_ARTIST__":
+        if not arg or arg.startswith("--") or arg.startswith("__") or arg == "__NO_COVER_ARTIST__":
             continue
         cover_artist = arg
         break
@@ -2114,8 +2769,13 @@ def main():
         old_source = meta.get("source") or ""
         meta["source"] = (old_source + "; artist adjusted as cover version").strip("; ")
 
+    if album_batch:
+        meta = apply_album_batch_adjustment(meta, source, hint, optional_args)
+
     if auto_add == "__PROBE__":
-        preview_meta = apply_live_adjustment(dict(meta), source, live_hint)
+        preview_meta = dict(meta)
+        if not album_batch:
+            preview_meta = apply_live_adjustment(preview_meta, source, live_hint)
         preview_meta = enrich_artwork(preview_meta, candidates)
         print(json.dumps({
             "title": preview_meta.get("title"),
@@ -2135,10 +2795,11 @@ def main():
     for key, value in hint_credits.items():
         if value and not meta.get(key):
             meta[key] = value
+    if not album_batch:
+        meta = apply_live_adjustment(meta, source, live_hint)
     lyrics = find_lyrics(meta, prefer_live=is_live_context(source, live_hint))
     if lyrics:
         meta["lyrics"] = lyrics
-    meta = apply_live_adjustment(meta, source, live_hint)
     meta = enrich_artwork(meta, candidates)
 
     out_name = safe_filename(f"{meta.get('title')} - {meta.get('artist')}.m4a")
@@ -2184,6 +2845,7 @@ if __name__ == "__main__":
 try {
     Write-Log "Started Apple Music auto import."
     $pythonForCheck = $null
+    $albumBatchInfo = $null
     if (-not $InputFiles -or $InputFiles.Count -eq 0) {
         $source = Ask-AudioSource -ClipboardUrls (Get-ClipboardUrls)
         if ($source.Cancelled) {
@@ -2192,7 +2854,18 @@ try {
         if ($source.Mode -eq "Url") {
             $pythonForCheck = Resolve-Python
             Ensure-PythonDependencies -PythonExe $pythonForCheck
-            $InputFiles = Download-VideoUrls -Urls $source.Urls -PythonExe $pythonForCheck
+            $InputFiles = Download-VideoUrls -Urls $source.Urls -PythonExe $pythonForCheck -PlaylistMode ([bool]$source.PlaylistMode) -MaxPlaylistItems ([int]$source.MaxPlaylistItems)
+            if ([bool]$source.PlaylistMode -and $InputFiles.Count -gt 1) {
+                $albumDefaults = Get-AlbumBatchDefaults -Files $InputFiles
+                $albumBatchInfo = Ask-AlbumBatchInfo `
+                    -TrackCount $InputFiles.Count `
+                    -DefaultAlbum $albumDefaults.Album `
+                    -DefaultArtist $albumDefaults.Artist `
+                    -DefaultYear $albumDefaults.Year
+                if ($albumBatchInfo.Cancelled) {
+                    exit 0
+                }
+            }
         }
         else {
             $InputFiles = Pick-Files
@@ -2211,8 +2884,10 @@ try {
 
     $done = New-Object System.Collections.Generic.List[string]
     $failed = New-Object System.Collections.Generic.List[string]
+    $currentFileIndex = 0
 
     foreach ($file in $InputFiles) {
+        $currentFileIndex += 1
         Write-Log "Selected file: $file"
         if (-not (Test-Path -LiteralPath $file)) {
             Write-Log "Skipped missing file: $file"
@@ -2225,48 +2900,123 @@ try {
         if (-not [string]::IsNullOrWhiteSpace($videoDefaults.Title)) {
             $defaultSongTitle = $videoDefaults.Title
         }
-        $trackInfo = Ask-TrackInfo `
-            -FileName ([System.IO.Path]::GetFileName($file)) `
-            -DefaultSongTitle $defaultSongTitle `
-            -DefaultArtist $videoDefaults.Artist `
-            -DefaultAlbum $videoDefaults.Album `
-            -DefaultYear $videoDefaults.Year `
-            -DefaultExtra $videoDefaults.Extra
-        if ($trackInfo.Cancelled) {
-            continue
-        }
-        $songTitle = $trackInfo.SongTitle
+        $batchMode = ($null -ne $albumBatchInfo -and -not [bool]$albumBatchInfo.Cancelled)
+        $songTitle = $defaultSongTitle
         if ([string]::IsNullOrWhiteSpace($songTitle)) { $songTitle = $baseName }
-        $artistName = $trackInfo.ArtistName
-        $albumName = $trackInfo.AlbumName
-        $yearText = $trackInfo.YearText
-        $extraText = $trackInfo.ExtraText
-        $isLive = [bool]$trackInfo.IsLive
+        $artistName = $videoDefaults.Artist
+        $albumName = $videoDefaults.Album
+        $yearText = $videoDefaults.Year
+        $extraText = $videoDefaults.Extra
+        $isLive = $false
         $useLiveLyrics = $false
-        $isCover = [bool]$trackInfo.IsCover
-        $liveArg = if ($isLive) { "--force-live" } else { "--force-studio" }
+        $isCover = $false
         $coverArtist = ""
-        if ($isCover) {
-            $coverArtist = $trackInfo.CoverArtist
-            if ([string]::IsNullOrWhiteSpace($coverArtist)) {
-                $coverArtist = $artistName
+        if ($batchMode) {
+            if (-not [string]::IsNullOrWhiteSpace($albumBatchInfo.ArtistName)) { $artistName = $albumBatchInfo.ArtistName }
+            if (-not [string]::IsNullOrWhiteSpace($albumBatchInfo.AlbumName)) { $albumName = $albumBatchInfo.AlbumName }
+            if (-not [string]::IsNullOrWhiteSpace($albumBatchInfo.YearText)) { $yearText = $albumBatchInfo.YearText }
+            $isLive = [bool]$albumBatchInfo.IsLive
+            $isCover = [bool]$albumBatchInfo.IsCover
+            if ($isCover) {
+                $coverArtist = $albumBatchInfo.CoverArtist
+                if ([string]::IsNullOrWhiteSpace($coverArtist)) {
+                    $coverArtist = $artistName
+                }
             }
+        }
+        if (-not $batchMode -or [bool]$albumBatchInfo.ConfirmEachTrack) {
+            $trackInfo = Ask-TrackInfo `
+                -FileName ([System.IO.Path]::GetFileName($file)) `
+                -DefaultSongTitle $songTitle `
+                -DefaultArtist $artistName `
+                -DefaultAlbum $albumName `
+                -DefaultYear $yearText `
+                -DefaultExtra $extraText `
+                -DefaultLive $isLive `
+                -DefaultCover $isCover `
+                -DefaultCoverArtist $coverArtist
+            if ($trackInfo.Cancelled) {
+                continue
+            }
+            $songTitle = $trackInfo.SongTitle
+            if ([string]::IsNullOrWhiteSpace($songTitle)) { $songTitle = $baseName }
+            $artistName = $trackInfo.ArtistName
+            $albumName = $trackInfo.AlbumName
+            $yearText = $trackInfo.YearText
+            $extraText = $trackInfo.ExtraText
+            $isLive = [bool]$trackInfo.IsLive
+            $useLiveLyrics = $false
+            $isCover = [bool]$trackInfo.IsCover
+            $coverArtist = ""
+            if ($isCover) {
+                $coverArtist = $trackInfo.CoverArtist
+                if ([string]::IsNullOrWhiteSpace($coverArtist)) {
+                    $coverArtist = $artistName
+                }
+            }
+        }
+        $liveArg = if ($isLive) { "--force-live" } else { "--force-studio" }
+        $trackNumber = 0
+        if (-not [string]::IsNullOrWhiteSpace($videoDefaults.PlaylistIndex)) {
+            $parsedTrackNumber = 0
+            if ([int]::TryParse($videoDefaults.PlaylistIndex, [ref]$parsedTrackNumber)) {
+                $trackNumber = $parsedTrackNumber
+            }
+        }
+        if ($trackNumber -le 0) {
+            $trackNumber = $currentFileIndex
+        }
+        $trackCount = 0
+        if (-not [string]::IsNullOrWhiteSpace($videoDefaults.PlaylistCount)) {
+            $parsedTrackCount = 0
+            if ([int]::TryParse($videoDefaults.PlaylistCount, [ref]$parsedTrackCount)) {
+                $trackCount = $parsedTrackCount
+            }
+        }
+        if ($trackCount -le 0 -and $batchMode) {
+            $trackCount = $InputFiles.Count
         }
         $hint = ""
         $confirmed = $false
         $skipFile = $false
         $probe = $null
 
-        for ($attempt = 1; $attempt -le 4; $attempt++) {
+        if ($batchMode -and -not [bool]$albumBatchInfo.ConfirmEachTrack) {
             $pieces = New-Object System.Collections.Generic.List[string]
-            if (-not [string]::IsNullOrWhiteSpace($artistName) -and -not [string]::IsNullOrWhiteSpace($songTitle)) {
-                $pieces.Add("$artistName - $songTitle")
+            if (-not [string]::IsNullOrWhiteSpace($songTitle)) { $pieces.Add("title: $songTitle") }
+            if (-not [string]::IsNullOrWhiteSpace($artistName)) { $pieces.Add("artist: $artistName") }
+            if (-not [string]::IsNullOrWhiteSpace($albumName)) { $pieces.Add("album: $albumName") }
+            if (-not [string]::IsNullOrWhiteSpace($yearText)) { $pieces.Add("year: $yearText") }
+            if (-not [string]::IsNullOrWhiteSpace($extraText)) { $pieces.Add($extraText) }
+            $hint = ($pieces -join "`r`n")
+            $confirmed = $true
+            Write-Log "Album batch hint for $file : $hint"
+        }
+
+        for ($attempt = 1; (-not $confirmed) -and $attempt -le 4; $attempt++) {
+            $pieces = New-Object System.Collections.Generic.List[string]
+            if ($batchMode) {
+                if (-not [string]::IsNullOrWhiteSpace($songTitle)) { $pieces.Add("title: $songTitle") }
+                if (-not [string]::IsNullOrWhiteSpace($artistName)) { $pieces.Add("artist: $artistName") }
+                if (-not [string]::IsNullOrWhiteSpace($albumName)) { $pieces.Add("album: $albumName") }
+                if (-not [string]::IsNullOrWhiteSpace($yearText)) { $pieces.Add("year: $yearText") }
+                if (-not [string]::IsNullOrWhiteSpace($extraText)) { $pieces.Add($extraText) }
             }
             else {
-                @($artistName, $songTitle) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $pieces.Add($_) }
+                if (-not [string]::IsNullOrWhiteSpace($artistName) -and -not [string]::IsNullOrWhiteSpace($songTitle)) {
+                    $pieces.Add("$artistName - $songTitle")
+                }
+                else {
+                    @($artistName, $songTitle) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $pieces.Add($_) }
+                }
+                @($albumName, $yearText, $extraText) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $pieces.Add($_) }
             }
-            @($albumName, $yearText, $extraText) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $pieces.Add($_) }
-            $hint = ($pieces -join " ")
+            if ($batchMode) {
+                $hint = ($pieces -join "`r`n")
+            }
+            else {
+                $hint = ($pieces -join " ")
+            }
             Write-Log "Probe attempt $attempt for $file : $hint"
             try {
                 $probeJson = Run-Python -Code $processor -PyArgs @($file, $hint, "__PROBE__", $liveArg, $coverArtist)
@@ -2396,7 +3146,13 @@ try {
             if ([string]::IsNullOrWhiteSpace($coverArtistArg)) {
                 $coverArtistArg = "__NO_COVER_ARTIST__"
             }
-            $json = Run-Python -Code $processor -PyArgs @($file, $hint, $autoAdd, $liveArg, $coverArtistArg, $liveLyricsArg)
+            $processorArgs = @($file, $hint, $autoAdd, $liveArg, $coverArtistArg, $liveLyricsArg)
+            if ($batchMode) {
+                $processorArgs += "--album-batch"
+                $processorArgs += ("__TRACK_NUMBER=" + $trackNumber)
+                $processorArgs += ("__TRACK_COUNT=" + $trackCount)
+            }
+            $json = Run-Python -Code $processor -PyArgs $processorArgs
             Write-Log "Python stdout for $file : $json"
             $result = $json | ConvertFrom-Json
             $parts = @("$($result.title) - $($result.artist)")

@@ -9,6 +9,7 @@ It can download supported webpage video links through `yt-dlp`, convert the audi
 ## Features
 
 - Paste supported webpage video links, including YouTube-style links, and download best available audio automatically
+- Download a whole supported playlist/album link in one pass, then fill shared album details once
 - Select local audio files: `.m4a`, `.mp4`, `.aac`, `.mp3`, `.flac`, `.wav`
 - One-window Chinese form for title, artist, album, year, extra hints, live version, and cover version
 - Chinese input mode is enabled in the form fields so Pinyin input stays ready
@@ -55,9 +56,10 @@ The tool will offer to install these packages automatically if they are missing.
 3. Install Python 3 if needed.
 4. Extract this tool's portable zip.
 5. Double-click `Start-AppleMusic-Auto-Import.vbs`.
-6. Paste a webpage video link, or choose one or more local audio files.
-7. If a link is used, the tool downloads the best available audio first.
-8. Fill in the Chinese form:
+6. Paste a webpage video link, paste a playlist/album link, or choose one or more local audio files.
+7. If a single video is used, click the current-video download button.
+8. If a playlist or album is used, click the whole-playlist download button, then fill the shared album form once.
+9. Fill in the Chinese form:
    - song title
    - original artist
    - album and year, if you know them
@@ -65,7 +67,11 @@ The tool will offer to install these packages automatically if they are missing.
    - live or normal version
    - cover or original version
    - cover artist, if needed
-9. Confirm the detected metadata before import.
+10. Confirm the detected metadata before import.
+
+In playlist/album batch mode, the tool first tries to find the album tracklist from online metadata and writes the official track numbers. If no album tracklist can be matched, it falls back to the playlist order.
+
+YouTube automatic Mix/Radio links whose `list=` value starts with `RD` are not normal playlists. The tool tries a YouTube Music queue fallback for these links, but caps the queue with the "max tracks" field because Mix/Radio can keep adding recommendations. The default is 15 tracks; clear the field for normal playlists if you want the whole list.
 
 If the auto-import folder cannot be found, the tool asks you to choose it manually.
 
