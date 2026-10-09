@@ -1,6 +1,6 @@
 Option Explicit
 
-Dim shell, fso, scriptDir, ps1, cmd, i
+Dim shell, fso, scriptDir, ps1, powershellExe, cmd, i
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
@@ -12,7 +12,12 @@ If Not fso.FileExists(ps1) Then
     WScript.Quit 1
 End If
 
-cmd = "powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File " & Q(ps1)
+powershellExe = shell.ExpandEnvironmentStrings("%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe")
+If Not fso.FileExists(powershellExe) Then
+    powershellExe = "pwsh.exe"
+End If
+
+cmd = Q(powershellExe) & " -NoProfile -STA -ExecutionPolicy Bypass -File " & Q(ps1)
 
 For i = 0 To WScript.Arguments.Count - 1
     cmd = cmd & " " & Q(WScript.Arguments.Item(i))

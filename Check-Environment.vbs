@@ -1,0 +1,25 @@
+Option Explicit
+
+Dim shell, fso, scriptDir, ps1, powershellExe, cmd
+Set shell = CreateObject("WScript.Shell")
+Set fso = CreateObject("Scripting.FileSystemObject")
+
+scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
+ps1 = fso.BuildPath(scriptDir, "AppleMusic-Auto-Enrich-Import.ps1")
+
+If Not fso.FileExists(ps1) Then
+    MsgBox "Cannot find AppleMusic-Auto-Enrich-Import.ps1 in this folder.", vbCritical, "Apple Music Auto Import"
+    WScript.Quit 1
+End If
+
+powershellExe = shell.ExpandEnvironmentStrings("%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe")
+If Not fso.FileExists(powershellExe) Then
+    powershellExe = "pwsh.exe"
+End If
+
+cmd = Q(powershellExe) & " -NoProfile -STA -ExecutionPolicy Bypass -File " & Q(ps1) & " -SelfTest"
+shell.Run cmd, 1, False
+
+Function Q(value)
+    Q = Chr(34) & CStr(value) & Chr(34)
+End Function
