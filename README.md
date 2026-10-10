@@ -1,6 +1,6 @@
 # Apple Music Auto Import
 
-> Development snapshot: `0.3.0-rc.23`. Some song-specific tests are still failing. Validation is focused on the current development PC; clean-machine compatibility is not yet verified. This snapshot is not a stable release.
+> Current release: `0.3.0`. Some song-specific issues remain; review metadata and lyrics before importing. Validation has focused on the development PC, and clean-machine compatibility is not yet verified.
 
 Windows tool for tagging local audio files and importing them into Apple Music.
 
@@ -93,7 +93,7 @@ The normal Apple Music location is based on that Windows account's Music folder,
 - The tested release target is Windows 11 x64. ARM64 Windows and older Apple Music builds are not currently claimed as supported.
 - The launcher prefers Windows PowerShell 5.1 and falls back to PowerShell 7.
 - Windows account names, localized or redirected Music folders, OneDrive folder redirection, and spaces or Chinese characters in the extracted path are supported.
-- Settings, logs, and the isolated Python environment are stored per Windows user under `%LOCALAPPDATA%\AppleMusicAutoImport`; they are not shared between Windows accounts.
+- Settings, logs, lyric caches, and newly created isolated Python environments are stored per Windows user under `%USERPROFILE%\.apple-music-auto-import`; they are not shared between Windows accounts. Existing runtime folders beside the script can still be reused.
 - Extract the zip before running it. If Windows blocks the downloaded scripts, open the zip file's Properties, select Unblock, and extract it again.
 - Enterprise AppLocker or group policies can block unsigned PowerShell/VBScript tools. A normal user-space script cannot bypass those policies.
 - Online metadata and video downloads depend on the user's region, proxy, network, and the source website. Local audio can still be imported with manually entered metadata when an optional lookup service is unavailable.

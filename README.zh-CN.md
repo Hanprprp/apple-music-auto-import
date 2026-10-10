@@ -1,6 +1,6 @@
 # Apple Music Auto Import
 
-> 当前为 `0.3.0-rc.23` 开发快照，仍有部分歌曲测试未通过。现阶段优先解决当前开发电脑上的使用问题，全新电脑兼容性尚未验证；此版本不是稳定正式版。
+> 当前正式版本为 `0.3.0`。仍有部分歌曲相关问题，请在导入前检查资料和歌词。现阶段优先解决当前开发电脑上的使用问题，全新电脑兼容性尚未验证。
 
 这是一个 Windows 工具，用来把本地音频、现场版、翻唱版或受支持的网页视频链接整理后导入 Apple Music。
 
@@ -41,7 +41,7 @@
 - 当前正式支持范围是 Windows 11 x64 与 Microsoft Store 中的新版 Apple Music。ARM64 Windows 和旧版 Apple Music 暂未验证。
 - 启动器优先使用 Windows PowerShell 5.1，找不到时会尝试 PowerShell 7。
 - Windows 用户名、系统语言、“音乐”目录重定向到 OneDrive，以及解压路径含空格或中文都已兼容。
-- 设置、日志和独立 Python 环境会保存在每个 Windows 用户自己的 `%LOCALAPPDATA%\AppleMusicAutoImport`，不会沿用作者电脑或其他 Windows 账号的资料。
+- 设置、日志、歌词缓存和新建的独立 Python 环境会保存在每个 Windows 用户自己的 `%USERPROFILE%\.apple-music-auto-import`，不会沿用作者电脑或其他 Windows 账号的资料。程序也可复用脚本旁已有的 Python 环境。
 - 必须先完整解压。若 Windows 阻止运行，请右键原始 zip，打开“属性”，勾选“解除锁定”，然后重新解压。
 - 公司或学校电脑可能用 AppLocker、组策略或安全软件禁止未签名脚本，这类限制不能由普通程序绕过。
 - 在线识别和网页音频下载会受到地区、代理、网络与网站限制影响；在线来源不可用时，本地音频仍可手动填写资料后导入。

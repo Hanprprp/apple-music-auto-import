@@ -10,7 +10,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Script:AppVersion = "0.3.0-rc.23"
+$Script:AppVersion = "0.3.0"
 $requestedStateRoot = [string]$env:APPLE_MUSIC_AUTO_IMPORT_STATE_ROOT
 if ([string]::IsNullOrWhiteSpace($requestedStateRoot)) {
     $userProfileRoot = [Environment]::GetFolderPath("UserProfile")

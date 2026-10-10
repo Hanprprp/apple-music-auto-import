@@ -1,3 +1,20 @@
+# v0.3.0
+
+Released on 2026-10-10. Promotes the rc.23 implementation to a regular release; the release preparation changes the version and documentation, not song-processing behavior.
+
+## Highlights
+
+- Full editable pre-import preview for metadata, artwork, lyrics, and songwriting credits.
+- Improved performer/original-artist matching, Chinese identity matching, lyric cleanup, and cached lyric recovery.
+- Shared per-user settings and cache location for desktop and packaged-app launches.
+- Environment checker, pinned dependencies, portable packaging script, and regression tests.
+
+## Known limitations
+
+- Some song-specific tests still fail. Review and correct metadata and lyrics before importing.
+- Clean-machine compatibility has not been verified; the documented target is Windows 11 x64 with Apple Music for Windows and Python 3.10 or newer.
+- Local import and Apple Music cloud synchronization are separate. End-to-end import and cloud sync have not been revalidated for this release.
+
 # v0.3.0-rc.23
 
 ## Validation status
