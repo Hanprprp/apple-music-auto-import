@@ -20,7 +20,7 @@ def load_downloader_code():
     return raw[start:end]
 
 
-def main():
+def main(error="ERROR: Failed to decrypt with DPAPI."):
     attempts = []
 
     class FakeYoutubeDL:
@@ -37,10 +37,7 @@ def main():
         def extract_info(self, _url, download=True):
             assert download is True
             if "cookiesfrombrowser" in self.options:
-                raise RuntimeError(
-                    "ERROR: Failed to decrypt with DPAPI. "
-                    "See https://github.com/yt-dlp/yt-dlp/issues/10927"
-                )
+                raise RuntimeError(error)
             output = Path(self.options["outtmpl"].replace("%(title).180s", "Song").replace("%(id)s", "abc123").replace("%(ext)s", "m4a"))
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_bytes(b"audio")
@@ -88,4 +85,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    for error in (
+        "ERROR: Failed to decrypt with DPAPI.",
+        "ERROR: Could not copy Chrome cookie database.",
+        'ERROR: could not find chrome cookies database in "C:\\Users\\han\\AppData\\Local\\Google\\Chrome\\User Data"',
+        "ERROR: could not find chrome cookie database",
+        "ERROR: could not find cookies database",
+    ):
+        main(error)

@@ -1,3 +1,47 @@
+# v0.3.1
+
+正式版：Windows 11 x64 + Apple Music for Windows。
+
+- 修复全新电脑没有 Chrome Cookie 数据库时下载中断的问题；保留 Cookie 故障回退和有限网络重试。
+- 改善歌曲字段识别：过滤视频标签及摘句，无法确定时留空；不将上传者、播放列表或未验证搜索候选当成歌曲资料。
+- 新增歌词补充来源及来源记录，改善封面下载与预览复用。
+- 内置 `Check-Environment.vbs` 环境检测，检查 Python、依赖、Apple Music、自动导入目录及在线资料源等条件。
+- 验证：本机和 Windows 11 x64 虚拟机（OS 10.0.26200，Apple Music 1.1540.23042.0）；用户确认虚拟机内下载、导入、播放、封面和歌词均正常。
+- 边界：不保证所有歌曲与网络；其他系统/架构及云同步未验证。环境检测通过不等于所有功能和平台均已验证。
+
+以下保留开发阶段变更记录。
+
+# v0.3.1-dev.5 (local testing)
+
+- Fall back to anonymous downloads when Chrome's cookie database does not exist (including a clean Windows installation without Chrome). Preserve terminal errors from the anonymous attempt.
+- Add missing-cookie-database regression cases alongside locked and undecryptable cookie databases.
+
+# v0.3.1-dev.4 (local testing)
+
+- Download remote artwork into the preview payload with per-request timeouts and a configured loopback-proxy fallback. Preserve TLS validation and the selected cover identity.
+- Reuse the downloaded preview image for import; replace indefinite asynchronous cover loading with an actionable failure message.
+- Validate JPEG/PNG response signatures and size, with tests for route failure, image payloads, removal, and unavailable artwork.
+
+# v0.3.1-dev.3 (local testing)
+
+- Parse presentation labels and quoted excerpts separately from song identity. Prefer catalog fields and explicit description labels; do not assume the direction of an unlabelled hyphen pair.
+- Keep uncertain initial fields empty, including local files without a sidecar. Remove raw-filename refill, uploader-as-artist, and playlist-as-album defaults.
+- Do not promote search candidates or the video-title hint to confirmed metadata after a failed lookup. Preserve explicit user input.
+- Add 18 input-default cases and 3 failed-lookup cases; retain existing supported book-title and performance formats.
+
+# v0.3.1-dev.2 (local testing)
+
+- Add Haogeh web lyrics as a last fallback after NetEase and LRCLIB. Require exact song title and matching supplied artists; skip live requests and unavailable pages.
+- Preserve the lyric page URL in preview provenance and cache, and fill missing explicit songwriting credits. KKBOX is not yet integrated.
+- Add synthetic regression checks for wrong-title/artist rejection, network failures, fallback selection, and source propagation.
+
+# v0.3.1-dev.1 (local testing)
+
+- Preserve terminal downloader errors instead of replacing a later TLS failure with an earlier recovered Chrome-cookie warning.
+- Distinguish transient HTTPS/network failures, HTTP 403/login requirements, and browser-cookie access failures; include the diagnostic log location.
+- Retry transient connection failures at most twice with short backoff, preserving anonymous mode after cookie recovery. Certificate validation remains enabled.
+- Added regressions for cookie-then-TLS failures, recovery, retry limits, non-retryable errors, and PowerShell error presentation.
+
 # v0.3.0
 
 Released on 2026-10-10. Promotes the rc.23 implementation to a regular release; the release preparation changes the version and documentation, not song-processing behavior.

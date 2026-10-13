@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string[]]$PrefetchUrls,
     [string]$PrefetchResultFile,
     [switch]$PrefetchPlaylistMode,
@@ -10,7 +10,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Script:AppVersion = "0.3.0"
+$Script:AppVersion = "0.3.1"
 $requestedStateRoot = [string]$env:APPLE_MUSIC_AUTO_IMPORT_STATE_ROOT
 if ([string]::IsNullOrWhiteSpace($requestedStateRoot)) {
     $userProfileRoot = [Environment]::GetFolderPath("UserProfile")
@@ -531,44 +531,7 @@ function Show-MetadataPreview {
         & $setCover $autoImage (& $D "5bCB6Z2i")
     }
     elseif (-not [string]::IsNullOrWhiteSpace($autoArtworkUrl)) {
-        & $setCover $null (& $D "5q2j5Zyo6L295YWl5bCB6Z2iLi4u")
-        try {
-            $previewArtworkUrl = $autoArtworkUrl -replace '/1200x1200bb\.', '/600x600bb.'
-            $artworkClient = New-Object System.Net.WebClient
-            $artworkClient.Headers[[System.Net.HttpRequestHeader]::UserAgent] = "CodexAppleMusicAutoImport/1.0"
-            $artworkClient.Add_DownloadDataCompleted({
-                param($sender, $eventArgs)
-                if ($form.IsDisposed -or $coverState.Mode -ne "auto") {
-                    return
-                }
-                if ($eventArgs.Cancelled -or $eventArgs.Error) {
-                    & $setCover $null (& $D "5bCB6Z2i6L295YWl5aSx6LSl")
-                    return
-                }
-                try {
-                    $bytes = [byte[]]$eventArgs.Result
-                    if (-not $bytes -or $bytes.Length -eq 0) {
-                        throw "Empty artwork response"
-                    }
-                    $extension = if ($previewArtworkUrl -match '(?i)\.png(?:\?|$)') { ".png" } else { ".jpg" }
-                    $downloadedArtworkFile = Join-Path $env:TEMP ("am-preview-artwork-" + [guid]::NewGuid().ToString() + $extension)
-                    [System.IO.File]::WriteAllBytes($downloadedArtworkFile, $bytes)
-                    $coverState.AutoData = [System.Convert]::ToBase64String($bytes)
-                    $coverState.AutoFile = $downloadedArtworkFile
-                    $image = ConvertFrom-PreviewImageBase64 $coverState.AutoData
-                    if ($image) {
-                        & $setCover $image (& $D "5bCB6Z2i")
-                    }
-                }
-                catch {
-                    & $setCover $null (& $D "5bCB6Z2i6L295YWl5aSx6LSl")
-                }
-            })
-            $artworkClient.DownloadDataAsync([uri]$previewArtworkUrl)
-        }
-        catch {
-            & $setCover $null (& $D "5bCB6Z2i6L295YWl5aSx6LSl")
-        }
+        & $setCover $null "封面下载失败，请重新查询或更换封面"
     }
     else {
         & $setCover $null (& $D "5rKh5pyJ5Y+v55So5bCB6Z2i")
@@ -1880,6 +1843,20 @@ function Restore-PreviewLyricsFromCache {
     return $Metadata
 }
 
+function Get-DownloadFailureMessage {
+    param([string]$Detail)
+    if ($Detail -match '(?i)(UNEXPECTED_EOF_WHILE_READING|EOF occurred in violation|connection reset|connection aborted|timed out|timeout|remote end closed|temporary failure in name resolution)') {
+        return (Decode-Utf8 "SFRUUFMg6L+e5o6l5Lit5pat5oiW6LaF5pe277yM572R57uc6YeN6K+V5ZCO5LuN5pyq5a6M5oiQ44CC6K+356iN5ZCO6YeN6K+V77yM5bm25qOA5p+l5b2T5YmN572R57uc5oiW5Luj55CG6L+e5o6l77yb6L+Z5LiN5Luj6KGoIENocm9tZSDmnKrlhbPpl63miJblubPlj7Dmi5Lnu53kuIvovb3jgII=")
+    }
+    if ($Detail -match '(?i)(sign in to confirm|HTTP Error 403|HTTP status 403)') {
+        return (Decode-Utf8 "5bmz5Y+w6L+U5ZueIEhUVFAgNDAzIOaIluimgeaxgueZu+W9le+8jOivt+ehruiupOivpeinhumikeWcqOa1j+iniOWZqOS4reWPr+ato+W4uOaSreaUvu+8jOW5tuajgOafpeiuv+mXruadg+mZkOOAgg==")
+    }
+    if ($Detail -match '(?i)(Could not (copy|access) Chrome cookie database|Failed to decrypt with DPAPI|Failed to decrypt cookies|cookie decryption failed)') {
+        return (Decode-Utf8 "5peg5rOV6K+75Y+WIENocm9tZSDnmbvlvZXkv6Hmga/jgILor7flrozlhajpgIDlh7ogQ2hyb21lIOWQjumHjeivle+8jOaIluS9v+eUqOacrOWcsOmfs+mikeaWh+S7tuOAgg==")
+    }
+    return $Detail
+}
+
 function Download-VideoUrls {
     param(
         [string[]]$Urls,
@@ -1909,6 +1886,7 @@ import urllib.request
 from pathlib import Path
 
 import yt_dlp
+import time
 
 download_root = Path(sys.argv[1])
 result_file = Path(sys.argv[2])
@@ -2113,9 +2091,20 @@ def browser_cookie_failure(exc):
     return any(marker in message for marker in (
         "could not copy chrome cookie database",
         "could not access chrome cookie database",
+        "could not find chrome cookies database",
+        "could not find chrome cookie database",
+        "could not find cookies database",
         "failed to decrypt with dpapi",
         "failed to decrypt cookies",
         "cookie decryption failed",
+    ))
+
+def transient_network_failure(exc):
+    message = str(exc or "").lower()
+    return any(marker in message for marker in (
+        "unexpected_eof_while_reading", "eof occurred in violation",
+        "connection reset", "connection aborted", "timed out", "timeout",
+        "remote end closed", "temporary failure in name resolution",
     ))
 
 expanded_urls = []
@@ -2160,6 +2149,9 @@ for url in expanded_urls:
         "windowsfilenames": True,
         "restrictfilenames": False,
         "ignoreerrors": bool(download_playlist),
+        "socket_timeout": 20,
+        "retries": 2,
+        "extractor_retries": 2,
     }
     # YouTube and Bilibili increasingly reject anonymous download requests.
     # Reuse the user's existing Chrome session when the source is from either site.
@@ -2169,17 +2161,24 @@ for url in expanded_urls:
     if download_playlist and max_playlist_items > 0 and url not in force_single_urls:
         options["playlistend"] = max_playlist_items
     try:
-        try:
-            with yt_dlp.YoutubeDL(options) as ydl:
-                info = ydl.extract_info(url, download=True)
-        except Exception as exc:
-            # Chrome can lock its cookie database or Windows can reject DPAPI
-            # decryption. Public media should still get an anonymous retry.
-            if "cookiesfrombrowser" not in options or not browser_cookie_failure(exc):
+        network_retries = 0
+        while True:
+            try:
+                with yt_dlp.YoutubeDL(options) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                break
+            except Exception as exc:
+                # Cookie recovery and transport retries are separate. Once
+                # cookies fail, keep subsequent attempts anonymous.
+                if "cookiesfrombrowser" in options and browser_cookie_failure(exc):
+                    options.pop("cookiesfrombrowser", None)
+                    continue
+                if transient_network_failure(exc) and network_retries < 2:
+                    network_retries += 1
+                    print(f"Transient network failure; retry {network_retries}/2", file=sys.stderr)
+                    time.sleep(network_retries)
+                    continue
                 raise
-            options.pop("cookiesfrombrowser", None)
-            with yt_dlp.YoutubeDL(options) as ydl:
-                info = ydl.extract_info(url, download=True)
         if not info:
             continue
         added = 0
@@ -2243,10 +2242,20 @@ if errors and not unique:
     }
     catch {
         $downloadError = $_.Exception.Message
-        if ($downloadError -match "(?i)(sign in to confirm|HTTP Error 403|Could not copy Chrome cookie database)") {
-            $downloadError = (& $D "5bmz5Y+w5ouS57ud5LqG5q2k5qyh5LiL6L2944CC6IulIENocm9tZSDmraPlnKjlvIDlkK/vvIzor7flrozlhajlhbPpl63miYDmnIkgQ2hyb21lIOeql+WPo+WQjumHjeivle+8m+WQpuWImeivt+eojeWQjumHjeivleaIluaUueeUqOacrOWcsOmfs+mikeaWh+S7tuOAgg==")
+        # stderr contains earlier recovered failures too. Prefer the helper's
+        # terminal errors so a cookie warning cannot mask a later TLS failure.
+        if (Test-Path -LiteralPath $resultFile) {
+            try {
+                $failureResult = Get-Content -LiteralPath $resultFile -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($failureResult.errors -and @($failureResult.errors).Count -gt 0) {
+                    $downloadError = @($failureResult.errors) -join "`r`n"
+                }
+            }
+            catch { }
         }
-        throw ((& $D "5LiL6L295aSx6LSl77ya") + $downloadError)
+        Write-Log ("URL download terminal error: " + $downloadError)
+        $friendlyError = Get-DownloadFailureMessage -Detail $downloadError
+        throw ((& $D "5LiL6L295aSx6LSl77ya") + $friendlyError + "`r`n`r`n" + (Decode-Utf8 "6K+m57uG5Y6f5Zug5bey6K6w5b2V5Yiw5pel5b+X77ya") + $Script:LogFile)
     }
     finally {
         Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue
@@ -2395,9 +2404,28 @@ function Get-LikelyArtistFragment {
     return $value
 }
 
+
+function Test-VideoPresentationLabel {
+    param([string]$Text)
+    return $Text -match '(?i)(?:動態歌詞|动态歌词|歌词版|歌詞版|字幕|音質|音质|無損|无损|高音質|高音质|高清|修復|修复|完整版|纯享|純享|\b(?:lyrics?|lyric video|official|music video|audio|video|mv|hd|hq|4k|8k|hi-res)\b)'
+}
+
+function Remove-VideoPresentationText {
+    param([string]$Text)
+    $value = Clean-VideoMetaText $Text
+    $value = [regex]::Replace($value, '【[^】]*】|\[[^\]]*\]|\([^)]*\)|（[^）]*）', {
+        param($match)
+        if ((Test-VideoPresentationLabel $match.Value) -or $match.Value -match '^\[(?:BV[\w]+|[A-Za-z0-9_-]{11})\]$') { return ' ' }
+        return $match.Value
+    })
+    # Quoted excerpts describe the video; they are not performer names.
+    $value = $value -replace '\u300e[^\u300f]*\u300f|\u300c[^\u300d]*\u300d|\u201c[^\u201d]*\u201d|\u2018[^\u2019]*\u2019', ' '
+    return ($value -replace '\s+', ' ').Trim(' -|｜')
+}
+
 function Get-DecorativeSongTitle {
     param([string]$Text)
-    $value = Get-TextBetweenChars $Text 0x3010 0x3011
+    $value = Get-TextBetweenChars (Remove-VideoPresentationText $Text) 0x3010 0x3011
     if ([string]::IsNullOrWhiteSpace($value)) {
         return ""
     }
@@ -2536,19 +2564,14 @@ function Get-TrackDefaultsFromVideoInfo {
     }
 
     $sidecar = "$AudioFile.aminfo.json"
-    if (-not (Test-Path -LiteralPath $sidecar)) {
-        return $defaults
-    }
-
-    try {
-        $info = Get-Content -LiteralPath $sidecar -Raw -Encoding UTF8 | ConvertFrom-Json
-    }
-    catch {
-        return $defaults
+    $info = [PSCustomObject]@{ title = [System.IO.Path]::GetFileNameWithoutExtension($AudioFile) }
+    if (Test-Path -LiteralPath $sidecar) {
+        try { $info = Get-Content -LiteralPath $sidecar -Raw -Encoding UTF8 | ConvertFrom-Json }
+        catch { } # Fall back to the same conservative filename parser.
     }
 
     $rawTitle = @($info.title, $info.fulltitle, $info.alt_title) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
-    $titleText = Clean-VideoMetaText $rawTitle
+    $titleText = Remove-VideoPresentationText $rawTitle
     $description = [string]($info.description)
     $combined = (($info.title, $info.fulltitle, $info.alt_title, $description) -join "`n")
     $rawPlaylistTitle = @($info.playlist_title, $info.playlist) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
@@ -2557,16 +2580,16 @@ function Get-TrackDefaultsFromVideoInfo {
 
     $title = $attributedPerformance.Title
     if ([string]::IsNullOrWhiteSpace($title)) {
-        $title = Get-TextBetweenChars $combined 0x300A 0x300B
+        $title = Get-TextBetweenChars $titleText 0x300A 0x300B
     }
     if ([string]::IsNullOrWhiteSpace($title)) {
-        $title = Get-TextBetweenChars $combined 0x003C 0x003E
+        $title = Get-TextBetweenChars $titleText 0x003C 0x003E
     }
     if ([string]::IsNullOrWhiteSpace($title)) {
         $title = Get-DecorativeSongTitle $titleText
     }
     if ([string]::IsNullOrWhiteSpace($title)) {
-        $title = Get-FirstRegexGroup $combined @(
+        $title = Get-FirstRegexGroup $description @(
             '^\s*(?:\u6b4c\u540d|\u66f2\u540d|\u6b4c\u66f2|\u66f2\u76ee|title|song)\s*[:\uFF1A\-]\s*(.+)$',
             '^\s*(?:track)\s*[:\uFF1A\-]\s*(.+)$'
         )
@@ -2574,17 +2597,14 @@ function Get-TrackDefaultsFromVideoInfo {
     if ([string]::IsNullOrWhiteSpace($title) -and -not [string]::IsNullOrWhiteSpace($info.track)) {
         $title = [string]$info.track
     }
-    if ([string]::IsNullOrWhiteSpace($title)) {
-        $titleParts = [regex]::Split($titleText, '\s*(?:-|\x2013|\x2014)\s*', 2)
-        if ($titleParts.Count -eq 2 -and -not [string]::IsNullOrWhiteSpace($titleParts[1])) {
-            $title = Clean-VideoTitleForSongName $titleParts[1]
-        }
-        else {
-            $title = Clean-VideoTitleForSongName $titleText
-        }
-    }
+    # A separator alone gives no evidence of artist/title direction.
+    # Do not turn either half (or the entire video caption) into a fact.
+    $explicitTitle = Get-FirstRegexGroup $description @('^\s*(?:歌名|曲名|歌曲|曲目|title|song|track)\s*[:：]\s*(.+)$')
+    if ($info.track) { $title = [string]$info.track }
+    elseif ($explicitTitle) { $title = $explicitTitle }
+    if ($title -and (Test-VideoPresentationLabel $title) -and -not $info.track -and -not $explicitTitle) { $title = "" }
 
-    $artist = Get-FirstRegexGroup $combined @(
+    $artist = Get-FirstRegexGroup $description @(
         '^\s*(?:\u6b4c\u624b|\u6f14\u5531|\u6f14\u5531\u8005|\u539f\u5531|artist|singer|vocal)\s*[:\uFF1A\-]\s*(.+)$',
         '^\s*(?:performer|performed by)\s*[:\uFF1A\-]\s*(.+)$'
     )
@@ -2594,27 +2614,28 @@ function Get-TrackDefaultsFromVideoInfo {
     if ([string]::IsNullOrWhiteSpace($artist) -and -not [string]::IsNullOrWhiteSpace($attributedPerformance.Performer)) {
         $artist = $attributedPerformance.Performer
     }
-    if ([string]::IsNullOrWhiteSpace($artist)) {
-        $artist = Infer-ArtistFromTitle $titleText
+    if ([string]::IsNullOrWhiteSpace($artist) -and $title) {
+        if ($titleText -match '[《<【]') { $artist = Infer-ArtistFromTitle $titleText }
+        else {
+            $parts = [regex]::Split($titleText, '\s+(?:-|–|—|\|)\s+')
+            if ($parts.Count -eq 2) {
+                if ($parts[0].Trim() -eq $title.Trim()) { $artist = Get-LikelyArtistFragment $parts[1] }
+                elseif ($parts[1].Trim() -eq $title.Trim()) { $artist = Get-LikelyArtistFragment $parts[0] }
+            }
+        }
     }
-    if ([string]::IsNullOrWhiteSpace($artist) -and ([string]$info.channel) -match '(?i)(topic|official|vevo|\u5b98\u65b9)') {
-        $artist = ([string]$info.channel) -replace '(?i)\s*-\s*topic$', ''
-        $artist = $artist -replace '(?i)\s*official.*$', ''
-        $artist = $artist.Trim()
+    if (-not $title -and $artist) {
+        $parts = [regex]::Split($titleText, '\s+(?:-|–|—|\|)\s+')
+        if ($parts.Count -eq 2) {
+            if ($parts[0].Trim() -eq $artist.Trim()) { $title = $parts[1].Trim() }
+            elseif ($parts[1].Trim() -eq $artist.Trim()) { $title = $parts[0].Trim() }
+        }
     }
     $artist = Clean-PerformanceArtistName $artist
-    if ([string]::IsNullOrWhiteSpace($artist) -and -not [string]::IsNullOrWhiteSpace($info.playlist_uploader)) {
-        $artist = ([string]$info.playlist_uploader) -replace '(?i)\s*-\s*topic$', ''
-        $artist = $artist -replace '(?i)\s*official.*$', ''
-        $artist = $artist.Trim()
-    }
 
     $album = Get-FirstRegexGroup $combined @('^\s*(?:\u4e13\u8f91|\u5c08\u8f2f|album)\s*[:\uFF1A\-]\s*(.+)$')
     if ([string]::IsNullOrWhiteSpace($album) -and -not [string]::IsNullOrWhiteSpace($info.album)) {
         $album = [string]$info.album
-    }
-    if ([string]::IsNullOrWhiteSpace($album) -and -not [string]::IsNullOrWhiteSpace($playlistTitle)) {
-        $album = $playlistTitle
     }
 
     $year = ""
@@ -2718,6 +2739,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from html.parser import HTMLParser
 from io import BytesIO
 from pathlib import Path
 
@@ -2767,6 +2789,9 @@ def read_lyric_cache(meta, prefer_live=False):
         value = str(payload.get(key) or "").strip()
         if value:
             out[key] = value
+    source = str(payload.get("lyric_source") or "")
+    if re.fullmatch(r"https://www\.haogeh\.com/song/\d+", source):
+        out["lyric_source"] = source
     return out
 
 def write_lyric_cache(meta, lyrics="", credits=None, prefer_live=False):
@@ -2783,6 +2808,7 @@ def write_lyric_cache(meta, lyrics="", credits=None, prefer_live=False):
         "composer": str(credits.get("composer") or existing.get("composer") or "").strip(),
         "lyricist": str(credits.get("lyricist") or existing.get("lyricist") or "").strip(),
         "arranger": str(credits.get("arranger") or existing.get("arranger") or "").strip(),
+        "lyric_source": credits.get("lyric_source") or existing.get("lyric_source") or "",
         "updated_at": int(time.time()),
     }
     if not payload["lyrics"] and not any(payload.get(key) for key in ("composer", "lyricist", "arranger")):
@@ -3290,11 +3316,6 @@ def parse_candidates(source, hint):
     base = clean_name(source)
     hint = (hint or "").strip()
     labeled_title = extract_labeled_value(hint, ["\u6b4c\u540d", "\u66f2\u540d", "\u6b4c\u66f2", "\u66f2\u76ee", "title", "song", "track"])
-    if not labeled_title:
-        labeled_title = extract_inline_labeled_value(
-            hint,
-            ["\u89c6\u9891\u6807\u9898", "\u5f71\u7247\u6a19\u984c", "video title"],
-        )
     labeled_artist = clean_performance_artist(extract_labeled_value(hint, ["\u6b4c\u624b", "\u6f14\u5531", "\u6f14\u5531\u8005", "\u539f\u5531", "artist", "singer", "vocal", "performer"]))
     has_structured_title = bool(labeled_title)
     book_title = labeled_title or extract_book_title(Path(source).stem) or extract_book_title(hint)
@@ -4516,6 +4537,96 @@ def known_video_lyrics(meta, source):
         return ""
     return fetch_netease_lyrics(item["song_id"], item["lyric_title"])
 
+class WebLyricPage(HTMLParser):
+    """Read only song identity and the lyric field, excluding navigation."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.stack = []
+        self.parts = {"title": [], "artists": [], "body": []}
+        self.links = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        classes = attrs.get("class", "").split()
+        target = ("title" if tag == "h1" else
+                  "artists" if "field--name-field-geshou" in classes else
+                  "body" if "field--name-body" in classes else None)
+        inherited = self.stack[-1][1] if self.stack else None
+        target = target or inherited
+        if tag in ("script", "style"):
+            target = None
+        if tag == "a":
+            href = urllib.parse.urljoin("https://www.haogeh.com", attrs.get("href", ""))
+            if re.fullmatch(r"https://www\.haogeh\.com/song/\d+", href) and href not in self.links:
+                self.links.append(href)
+        if target and tag in ("br", "p", "div"):
+            self.parts[target].append("\n")
+        if tag not in ("br", "img", "input", "meta", "link", "hr", "source", "wbr", "area", "embed", "param", "col", "base"):
+            self.stack.append((tag, target))
+
+    def handle_endtag(self, tag):
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index][0] == tag:
+                target = self.stack[index][1]
+                if target and tag in ("p", "div", "h1"):
+                    self.parts[target].append("\n")
+                del self.stack[index:]
+                break
+
+    def handle_data(self, data):
+        if self.stack and self.stack[-1][1]:
+            self.parts[self.stack[-1][1]].append(data)
+
+    def value(self, key):
+        return "\n".join(line.strip() for line in "".join(self.parts[key]).splitlines() if line.strip())
+
+
+def fetch_web_lyric_page(url):
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=6) as response:
+        if urllib.parse.urlsplit(response.geturl()).hostname != "www.haogeh.com":
+            raise ValueError("unexpected lyric host")
+        data = response.read(1024 * 1024 + 1)
+        if len(data) > 1024 * 1024:
+            raise ValueError("lyric page too large")
+    page = WebLyricPage()
+    page.feed(data.decode("utf-8", "replace"))
+    return page
+
+
+def search_web_lyrics(meta, prefer_live=False):
+    """Conservative last resort: exact title plus every supplied artist."""
+    title = (meta.get("title") or "").strip()
+    artist = (meta.get("artist") or "").strip()
+    if not title or not artist or prefer_live:
+        return {}
+    artists = [part.strip() for part in re.split(r"[/、,，;&]+", artist) if part.strip()]
+    if has_cjk(artist):
+        artists = [part for value in artists for part in value.split()]
+    query = title + " " + artists[0]
+    try:
+        search = fetch_web_lyric_page("https://www.haogeh.com/search/node?" + urllib.parse.urlencode({"keys": query}))
+    except Exception:
+        return {}
+    for url in search.links[:3]:
+        try:
+            page = fetch_web_lyric_page(url)
+            page_title = re.split(r"\s+-\s+", page.value("title"), maxsplit=1)[0]
+            actual_artists = [norm(value) for value in page.value("artists").splitlines()]
+            def matches(part):
+                expected = norm(part)
+                return any(expected == actual or (has_cjk(expected) and len(expected) >= 3 and actual.startswith(expected) and actual[len(expected):].isascii()) for actual in actual_artists)
+            if norm(page_title) != norm(title) or not all(matches(part) for part in artists):
+                continue
+            raw = page.value("body")
+            lyrics = usable_verified_lyrics(raw, title)
+            if lyrics:
+                return dict(extract_lyric_credits(raw), lyrics=lyrics, lyric_source=url)
+        except Exception:
+            continue
+    return {}
+
+
 def find_lyrics(meta, prefer_live=False, source=""):
     known = known_video_lyrics(meta, source)
     if known:
@@ -4554,6 +4665,11 @@ def find_lyrics(meta, prefer_live=False, source=""):
         if lyrics:
             write_lyric_cache(meta, lyrics, prefer_live=prefer_live)
             return lyrics
+    web = search_web_lyrics(meta, prefer_live=prefer_live)
+    if web.get("lyrics"):
+        meta["_web_lyric_data"] = web
+        write_lyric_cache(meta, web["lyrics"], web, prefer_live=prefer_live)
+        return web["lyrics"]
     return ""
 
 def append_visible_lyricist(lyrics, lyricist):
@@ -4586,6 +4702,9 @@ def restore_cached_lyric_data(meta, lyric_meta, lyrics="", prefer_live=False):
         cached = read_lyric_cache(lyric_meta, prefer_live)
     except Exception:
         return lyrics
+    cached = dict(lyric_meta.get("_web_lyric_data") or {}, **cached)
+    if cached.get("lyric_source") and (lyrics or cached.get("lyrics")):
+        append_source(meta, "lyrics: " + cached["lyric_source"])
     if not lyrics and cached.get("lyrics"):
         lyrics = cached["lyrics"]
         append_source(meta, "lyrics restored from verified cache")
@@ -5502,8 +5621,49 @@ def read_local_artwork(path):
     except OSError:
         return "", b""
 
+def local_artwork_proxy():
+    """Allow a configured loopback proxy as a fallback for TUN/CDN failures."""
+    if os.name != "nt":
+        return ""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Internet Settings") as key:
+            server = str(winreg.QueryValueEx(key, "ProxyServer")[0])
+        match = re.fullmatch(r"(?:http://)?(127\.0\.0\.1|localhost):(\d{1,5})", server)
+        if match and 0 < int(match.group(2)) < 65536:
+            return "http://" + match.group(1) + ":" + match.group(2)
+    except (OSError, ValueError):
+        pass
+    return ""
+
+
+def fetch_artwork_bytes(url):
+    # Keep the same verified cover; a route failure must not select another album.
+    url = re.sub(r"/1200x1200bb\.", "/600x600bb.", url)
+    openers = [urllib.request.urlopen]
+    proxy = local_artwork_proxy()
+    if proxy:
+        openers.append(urllib.request.build_opener(urllib.request.ProxyHandler({"http": proxy, "https": proxy})).open)
+    last_error = None
+    for opener in openers:
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            with opener(request, timeout=5) as response:
+                data = response.read(8 * 1024 * 1024 + 1)
+            if len(data) > 8 * 1024 * 1024:
+                raise ValueError("Artwork exceeds size limit")
+            if data.startswith(b"\xff\xd8\xff"):
+                return "image/jpeg", data
+            if data.startswith(b"\x89PNG\r\n\x1a\n"):
+                return "image/png", data
+            raise ValueError("Artwork response is not JPEG or PNG")
+        except Exception as error:
+            last_error = error
+    raise last_error
+
+
 def preview_artwork(meta):
-    """Inline local artwork; remote artwork is loaded by the open preview form."""
+    """Resolve artwork before opening the form; reuse those bytes on import."""
     if meta.get("artwork_mode") == "none":
         return "", ""
     content_type = ""
@@ -5513,6 +5673,11 @@ def preview_artwork(meta):
         content_type, data = read_local_artwork(local_path)
     elif meta.get("generated_artwork"):
         content_type, data = generated_artwork_bytes(meta.get("generated_artwork"))
+    elif meta.get("artwork_url"):
+        try:
+            content_type, data = fetch_artwork_bytes(meta["artwork_url"])
+        except Exception:
+            append_source(meta, "artwork download failed; retry lookup or choose a local cover")
     if not data:
         return "", ""
     return content_type or "image/jpeg", base64.b64encode(data).decode("ascii")
@@ -5676,7 +5841,7 @@ def tag_file(path, meta):
             content_type, data = generated_artwork_bytes(meta.get("generated_artwork"))
         elif meta.get("artwork_url"):
             try:
-                content_type, data = http_bytes(meta.get("artwork_url"))
+                content_type, data = fetch_artwork_bytes(meta.get("artwork_url"))
             except Exception:
                 pass
         if data:
@@ -5835,18 +6000,21 @@ def main():
                 fast=(fast_probe or preview_full),
                 allow_unconfirmed_title_only=explicit_cover,
             )
-    fallback = metadata_candidates[0]
     if meta is None:
+        # Search candidates are hypotheses, never confirmed metadata. Preserve
+        # only explicitly supplied fields when providers cannot verify a song.
+        confirmed_title = extract_labeled_value(hint, ["歌名", "曲名", "title", "song", "track"])
+        confirmed_artist = extract_labeled_value(hint, ["歌手", "演唱", "artist", "singer", "performer"])
         meta = {
-            "title": fallback.get("title") or clean_name(source),
-            "artist": fallback.get("artist") or "Unknown Artist",
+            "title": confirmed_title,
+            "artist": confirmed_artist,
             "album": "",
-            "album_artist": fallback.get("artist") or "Unknown Artist",
+            "album_artist": confirmed_artist,
             "track_number": 1,
             "track_count": 1,
             "disc_number": 1,
             "disc_count": 1,
-            "source": "No online match; used local filename/hint",
+            "source": "No verified online match; only explicit input retained",
         }
         meta["online_match"] = False
     else:
@@ -6163,13 +6331,13 @@ try {
         }
         $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file)
         $videoDefaults = Get-TrackDefaultsFromVideoInfo -AudioFile $file
-        $defaultSongTitle = $baseName
+        $defaultSongTitle = ""
         if (-not [string]::IsNullOrWhiteSpace($videoDefaults.Title)) {
             $defaultSongTitle = $videoDefaults.Title
         }
         $batchMode = ($null -ne $albumBatchInfo -and -not [bool]$albumBatchInfo.Cancelled)
         $songTitle = $defaultSongTitle
-        if ([string]::IsNullOrWhiteSpace($songTitle)) { $songTitle = $baseName }
+
         $artistName = $videoDefaults.Artist
         $albumName = $videoDefaults.Album
         $yearText = $videoDefaults.Year
@@ -6206,7 +6374,7 @@ try {
                 continue
             }
             $songTitle = $trackInfo.SongTitle
-            if ([string]::IsNullOrWhiteSpace($songTitle)) { $songTitle = $baseName }
+
             $artistName = $trackInfo.ArtistName
             $albumName = $trackInfo.AlbumName
             $yearText = $trackInfo.YearText
@@ -6371,7 +6539,7 @@ try {
                     Remove-Item -LiteralPath $previewArtworkTemp -Force -ErrorAction SilentlyContinue
                 }
                 $songTitle = [string]$previewDecision.Overrides.title
-                if ([string]::IsNullOrWhiteSpace($songTitle)) { $songTitle = $baseName }
+
                 $artistName = [string]$previewDecision.Overrides.artist
                 $albumName = [string]$previewDecision.Overrides.album
                 $yearText = [string]$previewDecision.Overrides.year

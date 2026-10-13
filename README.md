@@ -1,6 +1,6 @@
 # Apple Music Auto Import
 
-> Current release: `0.3.0`. Some song-specific issues remain; review metadata and lyrics before importing. Validation has focused on the development PC, and clean-machine compatibility is not yet verified.
+> Current release: `0.3.1`. Target: Windows 11 x64 with Apple Music for Windows. Download, import, playback, artwork and lyrics have been verified on the development PC and a Windows 11 VM; this is not a claim that every machine or song has been tested.
 
 Windows tool for tagging local audio files and importing them into Apple Music.
 
@@ -57,7 +57,7 @@ The tested Python package versions are recorded in `requirements.txt`. Manual in
 python -m pip install -r requirements.txt
 ```
 
-The tool creates its own isolated Python environment under the current Windows user's Local AppData folder and offers to install the tested package versions on first launch. It does not rely on Codex's internal runtime or write configuration into a protected application folder.
+The tool creates its own isolated Python environment under `%USERPROFILE%\.apple-music-auto-import` and offers to install the tested package versions on first launch. It does not rely on Codex's internal runtime or write configuration into a protected application folder.
 
 ## First Run
 
@@ -92,7 +92,7 @@ The normal Apple Music location is based on that Windows account's Music folder,
 
 - The tested release target is Windows 11 x64. ARM64 Windows and older Apple Music builds are not currently claimed as supported.
 - The launcher prefers Windows PowerShell 5.1 and falls back to PowerShell 7.
-- Windows account names, localized or redirected Music folders, OneDrive folder redirection, and spaces or Chinese characters in the extracted path are supported.
+- User directories and paths containing spaces or Chinese characters are handled dynamically; localized systems and OneDrive redirection combinations have not all been tested on real machines.
 - Settings, logs, lyric caches, and newly created isolated Python environments are stored per Windows user under `%USERPROFILE%\.apple-music-auto-import`; they are not shared between Windows accounts. Existing runtime folders beside the script can still be reused.
 - Extract the zip before running it. If Windows blocks the downloaded scripts, open the zip file's Properties, select Unblock, and extract it again.
 - Enterprise AppLocker or group policies can block unsigned PowerShell/VBScript tools. A normal user-space script cannot bypass those policies.
@@ -149,3 +149,12 @@ The tool writes normal lyrics when available. Apple Music local files do not rel
 This is an unofficial local automation tool. It is not affiliated with Apple, Apple Music, iTunes, MusicBrainz, LRCLIB, NetEase, Kuwo, or any music platform.
 
 Use it only with audio/video you have the right to download and use. This tool does not bypass DRM, paid access, login-only restrictions, or platform protections. Metadata and artwork are fetched from public endpoints where available, and availability/accuracy may vary.
+
+## 0.3.1 validation and environment checker
+
+- Host: Windows 11 Pro x64, OS 10.0.26200, Apple Music 1.1540.23042.0.
+- VM: Windows 11 x64, OS 10.0.26200, Apple Music 1.1540.23042.0; separate user `han`, no Chrome cookie database. The user confirmed successful download, import, playback, artwork and lyrics for a Bilibili live performance of “说走就走”.
+- Run `Check-Environment.vbs` first. It checks OS/architecture, PowerShell UI support, writable folders, Python/dependencies, Apple Music, the auto-import folder and availability of at least one metadata provider.
+- Passing the checker establishes prerequisites, not availability of every platform or song. Chrome is not required for public links: unavailable cookies trigger an anonymous attempt. Login-required resources may still fail.
+- Windows 10, ARM64, macOS, Linux and other Apple Music versions are unverified. Cloud sync, batch import and broader song coverage were not part of this VM end-to-end acceptance test.
+- Cloud sync depends on the Apple account, subscription and library settings and cannot be certified by the checker.

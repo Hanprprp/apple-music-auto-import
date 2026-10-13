@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $scriptPath = Join-Path $repoRoot "AppleMusic-Auto-Enrich-Import.ps1"
@@ -69,8 +69,8 @@ $coverInfo = @{
     [System.Text.UTF8Encoding]::new($false)
 )
 $cover = Get-TrackDefaultsFromVideoInfo -AudioFile $coverFile
-if ($cover.Title -ne (& $D "6buR6Imy5bm96buY") -or $cover.Artist -ne (& $D "5pu55qC8") -or $cover.IsLive) {
-    throw "Cover title defaults were parsed incorrectly."
+if ($cover.Title -or $cover.Artist -or $cover.IsLive) {
+    throw "An unlabelled hyphen pair must not determine artist/title direction."
 }
 
 $officialFile = Join-Path $tempRoot "official.webm"
